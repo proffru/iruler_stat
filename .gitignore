@@ -1,0 +1,9 @@
+.idea/
+*.log
+*.pot
+*.pyc
+__pycache__/
+.venv
+venv/
+media/upload/
+deploy
