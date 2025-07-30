@@ -41,7 +41,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     # 'main.apps.MainConfig',
-    # 'park.apps.ParkConfig',
+    'park.apps.ParkConfig',
 
     'rest_framework',
     'django_otp',
