@@ -157,7 +157,7 @@ if DEBUG:
     ]
 
     BOT_TOKEN = os.getenv('BOT_TOKEN_DEV')
-    HOST = 'tuenakopob.beget.app'
+    HOST = 'bakujebali.beget.app'
 
 else:
     BOT_TOKEN = os.getenv('BOT_TOKEN')

@@ -66,7 +66,7 @@ class Car(models.Model):
     status = models.CharField(max_length=255, verbose_name='статус')
     amenities = models.CharField(max_length=255, verbose_name='удобства', blank=True)
     category = models.CharField(max_length=255, verbose_name='категория ТС', blank=True)
-    registration_cert = models.CharField(mmax_length=255, verbose_name='свидетельство о регистрации')
+    registration_cert = models.CharField(max_length=255, verbose_name='свидетельство о регистрации')
     is_park_property = models.BooleanField(verbose_name='собственность парка', default=False)
 
     class Meta:
@@ -106,7 +106,7 @@ class Account(models.Model):
     class Meta:
         verbose_name = 'счет водителя'
         verbose_name_plural = 'счет водителя'
-        ordering = ['name']
+        ordering = ['account_id']
 
     def __str__(self):
         return self.account_id
@@ -120,7 +120,7 @@ class Driver(models.Model):
         verbose_name='парк',
         related_name='driver_park'
     )
-    driver_profile_id = models.CharField(max_length=32, verbose_name='id водителя', unique=True, db_index=True)
+    driver_id = models.CharField(max_length=32, verbose_name='id водителя', unique=True, db_index=True)
     last_name = models.CharField(max_length=255, verbose_name='фамилия')
     first_name = models.CharField(max_length=255, verbose_name='имя')
     middle_name = models.CharField(max_length=255, verbose_name='отчество', blank=True)
@@ -128,7 +128,7 @@ class Driver(models.Model):
     driver_license_number = models.CharField(max_length=255, verbose_name='номер ВУ', blank=True)
     driver_license_country = models.CharField(max_length=255, verbose_name='страна ВУ', blank=True,)
     driver_license_issue_date = models.CharField(max_length=255, verbose_name='дата выдачи ВУ', blank=True)
-    driver_license_expiration_date = models.CharField(ь_length=255, verbose_name='дата окончания ВУ', blank=True)
+    driver_license_expiration_date = models.CharField(max_length=255, verbose_name='дата окончания ВУ', blank=True)
     work_status = models.CharField(max_length=255, verbose_name='статус работы водителя', blank=True,)
     work_rule_id = models.ForeignKey(
         DriverWorkRule,
@@ -179,9 +179,15 @@ class Order(models.Model):
     )
     order_id = models.CharField(max_length=255, verbose_name='id заказа', unique=True)
     created_at = models.DateTimeField(verbose_name='создан')
-    status = models.CharField(ь_length=255, verbose_name='статус заказа', blank=True, default='')
+    status = models.CharField(max_length=255, verbose_name='статус заказа', blank=True, default='')
     payment_method = models.CharField(max_length=255, verbose_name='способ оплаты', blank=True, default='')
     price = models.DecimalField(decimal_places=4, max_digits=15, verbose_name='стоимость')
+    address_from = models.CharField(max_length=500, verbose_name='адрес откуда', blank=True, default='')
+    address_from_lat = models.CharField(max_length=50, verbose_name='адрес откуда широта', blank=True, default='')
+    address_from_lon = models.CharField(max_length=50, verbose_name='адрес откуда долгота', blank=True, default='')
+    address_to = models.CharField(max_length=500, verbose_name='адрес куда', blank=True, default='')
+    address_to_lat = models.CharField(max_length=50, verbose_name='адрес куда широта', blank=True, default='')
+    address_to_lon = models.CharField(max_length=50, verbose_name='адрес куда долгота', blank=True, default='')
     car = models.ForeignKey(
         Car,
         on_delete=models.PROTECT,
@@ -198,26 +204,10 @@ class Order(models.Model):
         ]
         verbose_name = 'заказ'
         verbose_name_plural = 'заказы'
-        ordering = ['-ended_at']
+        ordering = ['-created_at']
 
     def __str__(self):
         return f'{self.driver.last_name} {self.driver.first_name} {self.driver.middle_name}'
-
-
-class TransactionCategory(models.Model):
-    """Категории транзакций"""
-    category_id = models.CharField(max_length=255, verbose_name='id категории', unique=True, db_index=True)
-    name = models.CharField(max_length=255, verbose_name='название категории')
-    group_id = models.CharField(max_length=255, verbose_name='id группы', blank=True, default='')
-    group_name = models.CharField(max_length=255, verbose_name='название группы', blank=True, default='')
-
-    class Meta:
-        verbose_name = 'категория транзакции'
-        verbose_name_plural = 'категории транзакций'
-        ordering = ['-event_at']
-
-    def __str__(self):
-        return self.name
 
 
 class Transaction(models.Model):
@@ -238,14 +228,7 @@ class Transaction(models.Model):
 
     transaction_id = models.CharField(max_length=255, verbose_name='id заказа', unique=True)
     event_at = models.DateTimeField(verbose_name='завершен')
-    category = models.ForeignKey(
-        TransactionCategory,
-        on_delete=models.PROTECT,
-        verbose_name='категория',
-        blank=True,
-        null=True,
-        default=None
-    )
+    category = models.CharField(max_length=255, verbose_name='категория')
     name = models.CharField(max_length=255, verbose_name='название категории', blank=True, default='')
     group_id = models.CharField(max_length=255, verbose_name='id группы', blank=True, default='')
     group_name = models.CharField(max_length=255, verbose_name='название группы', blank=True, default='')
@@ -262,98 +245,3 @@ class Transaction(models.Model):
 
     def __str__(self):
         return f'{self.driver.last_name} {self.driver.first_name} {self.driver.middle_name}'
-
-
-class RegularChargesError(models.Model):
-    """Ошибки периодических списаний"""
-    park = models.ForeignKey(
-        Park,
-        on_delete=models.PROTECT,
-        verbose_name='парк',
-        related_name='regular_charges_error_park'
-    )
-    driver = models.ForeignKey(
-        Driver,
-        on_delete=models.CASCADE,
-        verbose_name='водитель',
-        related_name='regular_charges_error_driver',
-        db_index=True
-    )
-    daily_price = models.DecimalField(verbose_name='размер списания', max_digits=9, decimal_places=4, default=0)
-    order = models.BooleanField(verbose_name='заказ', default=True)
-    transaction = models.BooleanField(verbose_name='транзакция', default=True)
-    date = models.DateField(verbose_name='дата')
-
-    class Meta:
-        unique_together = [['park', 'driver', 'date']]
-        indexes = [
-            models.Index(fields=['driver'])
-        ]
-        verbose_name = 'ошибки периодических списаний'
-        verbose_name_plural = 'ошибки периодических списаний'
-        ordering = ['-date']
-
-    def __str__(self):
-        return f'{self.driver.last_name} {self.driver.first_name} {self.driver.middle_name}'
-
-
-class CalculateDriverStatus(models.Model):
-    """Дата сет статусов водителей по дням"""
-    park = models.ForeignKey(
-        Park,
-        on_delete=models.CASCADE,
-        verbose_name='парк',
-        related_name='calculate_driver_status_park'
-    )
-    count_active_individual_entrepreneur = models.PositiveIntegerField(verbose_name='активные ИП', default=0)
-    count_active_selfemployed = models.PositiveIntegerField(verbose_name='активные СМЗ', default=0)
-    count_active_park_employee = models.PositiveIntegerField(verbose_name='активные водители', default=0)
-    count_outflow_individual_entrepreneur = models.PositiveIntegerField(verbose_name='отток ИП', default=0)
-    count_outflow_selfemployed = models.PositiveIntegerField(verbose_name='отток СМЗ', default=0)
-    count_outflow_park_employee = models.PositiveIntegerField(verbose_name='отток водители', default=0)
-    count_archive_individual_entrepreneur = models.PositiveIntegerField(verbose_name='архив ИП', default=0)
-    count_archive_selfemployed = models.PositiveIntegerField(verbose_name='архив СМЗ', default=0)
-    count_archive_park_employee = models.PositiveIntegerField(verbose_name='архив водители', default=0)
-    date = models.DateField(verbose_name='дата')
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name='дата добавления')
-
-    def __str__(self):
-        return f'{self.park.name} ({self.park.city})'
-
-    class Meta:
-        unique_together = [('park', 'date')]
-        verbose_name = 'количество статусов по дням'
-        verbose_name_plural = 'количество статусов по дням'
-        ordering = ['-date']
-
-
-class CountActiveDriver(models.Model):
-    """Количество активных водителей по дням"""
-    park = models.ForeignKey(
-        Park,
-        on_delete=models.CASCADE,
-        verbose_name='парк',
-        related_name='count_active_driver_park'
-    )
-    count_active_individual_entrepreneur = models.PositiveIntegerField(verbose_name='активные ИП', default=0)
-    count_active_park_employee = models.PositiveIntegerField(verbose_name='активные водители', default=0)
-    count_active_selfemployed = models.PositiveIntegerField(verbose_name='активные СМЗ', default=0)
-    count_total = models.PositiveIntegerField(verbose_name='общие число активных водителей', default=0)
-    period = models.PositiveSmallIntegerField(verbose_name='период', default=1)
-    created_at = models.DateField(auto_now_add=True, verbose_name='дата добавления')
-
-    def __str__(self):
-        return f'{self.park.name}'
-
-    class Meta:
-        indexes = [
-            models.Index(fields=['park']),  # Индексация по полю park
-            models.Index(fields=['created_at']),  # Индексация по полю created_at
-            models.Index(fields=['period']),  # Индексация по полю period
-        ]
-
-        unique_together = [('park', 'created_at', 'period')]
-        verbose_name = 'количество активных водителей по дням'
-        verbose_name_plural = 'количество активных водителей по дням'
-        ordering = ['-created_at']
-
