@@ -1,24 +1,16 @@
 import json
 import logging
 import math
-import time
 
 from datetime import datetime
 
 import pytz
 import requests
-import uuid
 from django.conf import settings
-
-from park.models import Park, Driver
 
 logger = logging.getLogger(__name__)
 
 URL_API_YANDEX = 'https://fleet-api.taxi.yandex.net'
-
-ORIGINAL_URL = 'https://fleet.yandex.ru'
-
-ORIGINAL_URL_KZ = 'https://fleet.yandex.kz'
 
 # Получение профиля водителя (курьера) GET
 URL_API_GET_PROFILE = '/v2/parks/contractors/driver-profile'
@@ -36,11 +28,8 @@ URL_API_POST_PARK_TRANSACTIONS_LIST = '/v2/parks/transactions/list'
 
 URL_API_POST_TRANSACTIONS_CATEGORIES_LIST = '/v2/parks/transactions/categories/list'
 
-# Создание транзакции на балансе водителя (курьера) POST
-URL_API_CREATE_TRANSACTION = '/v3/parks/driver-profiles/transactions'
-
-# Проверка статуса транзакции
-URL_API_CHECK_TRANSACTION_STATUS = '/v3/parks/driver-profiles/transactions/status'
+# Получение списка условий работы GET
+URL_API_GET_WORK_RULES = '/v1/parks/driver-work-rules'
 
 
 def get_headers(park_id, api_key, client_id):
@@ -324,72 +313,6 @@ def post_park_transactions_list(park_id, api_key, client_id, category_ids, ended
     return {'transactions': json_total}
 
 
-def get_user_headers(park_id, refer):
-    """Формируем заголовки для парсинга диспетчерской"""
-    headers_list = {
-        'Accept-Language': 'ru',
-        'Content-Type': 'application/json; charset=utf-8',
-        'Cookie': settings.SESSION,
-        'Host': 'fleet.yandex.ru',
-        'Origin': ORIGINAL_URL,
-        'Referer': refer,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 YaBrowser/25.2.0.0 Safari/537.36',
-        'X-Park-Id': park_id
-    }
-    return headers_list
-
-
-def get_regular_charges(park_id):
-    """Загрузить периодические списания"""
-    URL = f'{ORIGINAL_URL}/api/v1/regular-charges/list'
-    refer = f'{ORIGINAL_URL}/contractors?segment=churn&park_id={park_id}'
-
-    headers = get_user_headers(park_id, refer)
-    if not headers:
-        return None
-
-    # получили количество записей
-    payload = {
-        'date_type': 'date_from',
-        'limit': 1,
-        'page': 1
-    }
-
-    response = requests.request("POST", URL, headers=headers, json=payload)
-    if response.status_code != 200:
-        logger.error(f'get_regular_charges - не получаю список периодических списаний, нужно обновить сессию {park_id}')
-        return None
-    try:
-        total = response.json()['pagination']['total']
-    except Exception:
-        return None
-
-    # собираем весь отчет
-    limit = 100
-    if limit > total:
-        limit = total
-    if total >= limit:
-        # подсчитываем количество страниц
-        count_pages = math.ceil(total / limit)
-
-        json_total = []
-
-        for page in range(count_pages):
-            page += 1
-            payload = {
-                'date_type': 'date_from',
-                'limit': limit,
-                'page': page
-            }
-            response = requests.request("POST", URL, headers=headers, json=payload)
-            if response.status_code == 200:
-                json_total += response.json()['regular_charges']
-        return {
-            'regular_charges': json_total
-        }
-    return None
-
-
 def get_transaction_categories(park_id, api_key, client_id):
     """Получение списка категорий транзакций"""
     """Получение списка транзакций по водителю (курьеру)"""
@@ -412,207 +335,14 @@ def get_transaction_categories(park_id, api_key, client_id):
     return None
 
 
-def yandex_payment(driver_id, amount, description):
-    """Проведения платежей"""
-    logger.info(f"Yandex payment STARTED for driver_id={driver_id}, amount={amount}")
-    URL = URL_API_YANDEX + URL_API_CREATE_TRANSACTION
+def get_driver_work_rules(park_id, api_key, client_id):
+    """Получить список условий работы"""
+    URL = URL_API_YANDEX + URL_API_GET_WORK_RULES
 
-    try:
-        driver = Driver.objects.select_related('park').get(driver_id=driver_id)
-        park = driver.park
-    except Exception as e:
-        logger.error(f'ошибка загрузки водителя и ошибка загрузки парка {e}')
-        return False
-
-    headers = get_headers(park.park_id, park.api_key, park.client_id)
-
-    max_retries = 2
-    retry_count = 0
-
-    transaction_id = None
-    created_at = None
-    status = None
-    version = None
-    status_description = None
-    status_code = 0
-
-    token = str(uuid.uuid4())
-    x_token = {
-        "X-Idempotency-Token": token
-    }
-    headers.update(x_token)
-
-    post_data = {
-        'park_id': park.park_id,
-        'contractor_profile_id': driver_id,
-        'amount': str(amount),
-        'description': description,
-        'data': {
-            'kind': 'payout',
-            'fee_amount': '0'
-        }
-    }
-
-    while retry_count < max_retries:
-        if retry_count > 0:
-            time.sleep(1)
-
-        try:
-            response = requests.post(
-                URL,
-                headers=headers,
-                json=post_data
-            )
-            response.raise_for_status()
-        except (requests.RequestException, ValueError) as e:
-            retry_count += 1
-            continue
-
-        if response.status_code != 200:
-            print("Ошибка при запросе:", response.text)
-            return {
-                'status': 'fail',
-                'transaction': None
-            }
-
-        json_data = response.json()
-        print("Yandex response text:", response.text)
-
-        # Сохраняем данные вне зависимости от статуса
-        transaction_id = json_data.get("id")
-        created_at = json_data.get("created_at")
-        status = json_data.get("status")
-        version = json_data.get("version")
-        status_description = json_data.get('status_description')
-
-        # Если статус не in_progress — можно выходить
-        if status != "in_progress":
-            break
-
-        retry_count += 1
-
-    # сохраняем транзакцию
-    transaction = PaymentStatus.objects.create(
-        park=park,
-        driver=driver,
-        transaction_id=transaction_id,
-        created_at=created_at,
-        status=status,
-        version=version,
-        status_description=status_description,
-        amount=amount,
-        status_code=status_code
-    )
-
-    if status is None:
-        return {
-            'status': 'fail',
-            'transaction': None
-        }
-
-    return {
-        'status': status,
-        'transaction': transaction
-    }
-
-
-def payment_status(transaction_id, driver_id):
-    """Статус транзакции"""
-    URL = URL_API_YANDEX + URL_API_CHECK_TRANSACTION_STATUS
-
-    try:
-        driver = Driver.objects.select_related('park').get(driver_id=driver_id)
-        park = driver.park
-    except Exception as e:
-        logger.error(f'ошибка загрузки водителя и ошибка загрузки парка {e}')
-        return False
-
-    params = {
-        'id': transaction_id,
-        'contractor_profile_id': driver_id,
-        'park_id': park.park_id,
-        'version': 1
-    }
-
-    headers = get_headers(park.park_id, park.api_key, park.client_id)
-
-    response = requests.get(
-        URL,
-        headers=headers,
-        params=params
-    )
-
-    print("Yandex response text:", response.text)
-
+    # заголовки
+    headers = get_headers(park_id, api_key, client_id)
+    params = {'park_id': park_id}
+    response = requests.request('GET', URL, headers=headers, params=params)
     if response.status_code == 200:
-        json_data = response.json()
-
-        # Извлекаем данные
-        transaction_id = json_data.get('id')
-        status = json_data['version_info']['status']
-        version = json_data['version_info']['version']
-
-        # сохраняем транзакцию
-        obj, updated =PaymentStatus.objects.update_or_create(
-            park=park,
-            driver=driver,
-            transaction_id=transaction_id,
-            version=version,
-            defaults={
-                'status': status
-            }
-        )
-        if updated:
-            return {
-                'status': status,
-                'transaction': obj
-            }
-
-    return {
-        'status': None,
-        'transaction': None
-    }
-
-
-def get_active_drivers(park_id, driver_type, total=None):
-    """Загрузить периодические списания"""
-    refer = f'{ORIGINAL_URL}/contractors?segment=active&employment_type=selfemployed&park_id={park_id}'
-
-    headers = get_user_headers(park_id, refer)
-    if not headers:
-        return None
-
-    if total:
-        URL = f'{ORIGINAL_URL}/api/fleet/contractor-profiles-manager/v1/segments/count'
-        payload = {}
-    else:
-        URL = f'{ORIGINAL_URL}/api/fleet/contractor-profiles-manager/v1/active/count'
-
-        # получили количество записей
-        if driver_type == 'selfemployed':
-            payload = {
-                'query': {
-                    'employment_type': 'selfemployed'
-                }
-            }
-        else:
-            payload = {
-                'query': {
-                    'employment_type': 'individual_entrepreneur'
-                }
-            }
-
-    response = requests.request("POST", URL, headers=headers, json=payload)
-    print(response.text)
-    if response.status_code != 200:
-        logger.error(f'get_active_drivers - не получаю список периодических списаний, нужно обновить сессию {park_id}')
-        return None
-    try:
-        if total:
-            total = response.json()['active']
-            return total
-        else:
-            stages = response.json()['stages']['all']
-            return stages
-    except Exception:
-        return None
+        return response.json()
+    return None

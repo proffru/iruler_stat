@@ -53,7 +53,7 @@ class DriverAdmin(admin.ModelAdmin):
     list_display = ('last_name', 'first_name', 'middle_name', 'park', 'work_status')
     list_filter = ('work_status', 'park')
     search_fields = ('last_name', 'first_name', 'middle_name', 'driver_id', 'phone')
-    raw_id_fields = ('park', 'work_rule_id', 'account')
+    raw_id_fields = ('park', 'work_rule', 'account')
     ordering = ('last_name', 'first_name')
 
 

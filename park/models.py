@@ -124,13 +124,12 @@ class Driver(models.Model):
     last_name = models.CharField(max_length=255, verbose_name='фамилия')
     first_name = models.CharField(max_length=255, verbose_name='имя')
     middle_name = models.CharField(max_length=255, verbose_name='отчество', blank=True)
-    phone = models.CharField(max_length=20, verbose_name='Номер телефона', blank=True)
     driver_license_number = models.CharField(max_length=255, verbose_name='номер ВУ', blank=True)
     driver_license_country = models.CharField(max_length=255, verbose_name='страна ВУ', blank=True,)
     driver_license_issue_date = models.CharField(max_length=255, verbose_name='дата выдачи ВУ', blank=True)
     driver_license_expiration_date = models.CharField(max_length=255, verbose_name='дата окончания ВУ', blank=True)
     work_status = models.CharField(max_length=255, verbose_name='статус работы водителя', blank=True,)
-    work_rule_id = models.ForeignKey(
+    work_rule = models.ForeignKey(
         DriverWorkRule,
         on_delete=models.PROTECT,
         verbose_name='условия работы',
