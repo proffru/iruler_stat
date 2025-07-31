@@ -228,16 +228,16 @@ def load_order(ended_at_from=None, ended_at_to=None):
 def load_park_data_from_file():
     """Загрузить id парков из эксель"""
     # Укажите путь к вашему Excel файлу
-    file_path = 'park.xlsx'
+    file_path = 'park_list.xlsx'
 
     # Чтение Excel файла
     df = pd.read_excel(file_path)
 
     # Проход по всем строкам и вывод значений
     for index, row in df.iterrows():
-        park = row['park']
-        key = row['key']
-        client = row['client']
+        park = row['park_id']
+        key = row['api_key']
+        client = row['client_id']
         Park.objects.get_or_create(
             park_id=park,
             defaults={
