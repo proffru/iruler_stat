@@ -25,41 +25,52 @@ from park.utils import (
 logger = logging.getLogger(__name__)
 
 
-def load_work_rules(park=None):
+def load_work_rules(one_park_id=None):
     """Загрузить список условий работы"""
-    qs = Park.objects.filter(is_active=True).prefetch_related('driver_park')
-    # нужна выгрузка по конкретному парку
-    if park:
-        qs = qs.filter(profile__pk=park)
+    batch_size = 100
+    work_rules_to_create = []
 
-    for park_data in qs:
-        client_id = park_data.client_id
-        api_key = park_data.api_key
-        park_id = park_data.park_id
+    qs = Park.objects.filter(is_active=True)
+    # нужна выгрузка по конкретному парку
+    if one_park_id:
+        qs = qs.filter(park_id=one_park_id)
+
+    for park in qs:
+        client_id = park.client_id
+        api_key = park.api_key
+        park_id = park.park_id
 
         data = get_driver_work_rules(park_id, api_key, client_id)
 
-        # Эту часть нужно переписать на upsert
         if data:
-            for i in range(len(data['rules'])):
-                objs = {
-                    'park_id': park_data.pk,
-                    'work_rule_id': data['rules'][i]['id'],
-                    'is_enabled': data['rules'][i]['is_enabled'],
-                    'name': data['rules'][i]['name']
-                }
-
-                DriverWorkRule.objects.update_or_create(
-                    work_rule_id=data['rules'][i]['id'],
-                    park_id=park_data.pk,
-                    defaults=objs
+            for rule in data['rules']:
+                work_rules_to_create.append(
+                    DriverWorkRule(
+                        park=park,
+                        work_rule_id=rule['id'],
+                        is_enabled=rule['is_enabled'],
+                        name=rule['name']
+                    )
                 )
+
+            # Выполняем bulk_create после обработки всех правил для парка
+            if work_rules_to_create:
+                DriverWorkRule.objects.bulk_create(
+                    work_rules_to_create,
+                    batch_size=batch_size,
+                    update_conflicts=True,
+                    unique_fields=['park', 'work_rule_id'],
+                    update_fields=['is_enabled', 'name']
+                )
+                work_rules_to_create = []  # Очищаем список для следующего парка
+
     return HttpResponse("Успешно обновлен список условий работы", content_type="application/json; charset=utf-8")
 
 
 def load_yandex_driver_profiles():
     """Загрузить список водителей Яндекс такси"""
-    batch_size = 100  # Задайте желаемый размер пакета
+    batch_size = 100
+    seen_drivers = set()
 
     qs = Park.objects.filter(is_active=True).prefetch_related('driver_park')
 
@@ -93,6 +104,7 @@ def load_yandex_driver_profiles():
                     currency=account_data['currency'],
                     account_type=account_data['type']
                 )
+
                 accounts_to_create.append(account)
 
                 driver = Driver(
@@ -101,24 +113,51 @@ def load_yandex_driver_profiles():
                     last_name=driver_profile['last_name'],
                     first_name=driver_profile.get('first_name', ''),
                     middle_name=driver_profile.get('middle_name', ''),
-                    driver_license_number=driver_data['driver_license']['normalized_number'],
-                    driver_license_country=driver_data['driver_license']['country'],
-                    issue_date=driver_data['driver_license']['issue_date'],
-                    driver_license_expiration_date=driver_data['driver_license']['expiration_date'],
                     work_status=driver_profile['work_status'],
-                    work_rule=None if len(work_rule) <= 0 else DriverWorkRule.objects.filter(
+                    work_rule=DriverWorkRule.objects.filter(
                         park=park,
-                        work_rule_id=work_rule),
+                        work_rule_id=work_rule
+                    ).first() if work_rule else None,
                     account=account,
                     created_date=created_date
                 )
+                license = driver_data.get('driver_license', None)
+
+                # Добавляем поля водительского удостоверения только если license не None
+                if license is not None:
+                    driver.driver_license_number = license.get('normalized_number', '')
+                    driver.driver_license_country = license.get('country', '')
+                    driver.issue_date = license.get('issue_date', None)
+                    driver.driver_license_expiration_date = license.get('expiration_date', None)
+                else:
+                    # Явно устанавливаем None или пустые значения, если license отсутствует
+                    driver.driver_license_number = ''
+                    driver.driver_license_country = ''
+                    driver.issue_date = None
+                    driver.driver_license_expiration_date = None
 
                 drivers_to_create.append(driver)
+
+            # Обрабатываем только уникальные водители
+            seen_account_ids = set()
+            filtered_accounts = []
+            for account in accounts_to_create:
+                if account.account_id not in seen_account_ids:
+                    filtered_accounts.append(account)
+                    seen_account_ids.add(account.account_id)
+
+            seen_driver_keys = set()
+            filtered_drivers = []
+            for driver in drivers_to_create:
+                key = (driver.park.id, driver.driver_id)
+                if key not in seen_driver_keys:
+                    filtered_drivers.append(driver)
+                    seen_driver_keys.add(key)
 
             try:
                 # Сначала создаем аккаунты
                 Account.objects.bulk_create(
-                    accounts_to_create,
+                    filtered_accounts,
                     batch_size=batch_size,
                     update_conflicts=True,
                     unique_fields=['account_id'],
@@ -127,7 +166,7 @@ def load_yandex_driver_profiles():
 
                 # Затем создаем водителей
                 Driver.objects.bulk_create(
-                    drivers_to_create,
+                    filtered_drivers,
                     batch_size=batch_size,
                     update_conflicts=True,
                     unique_fields=['park', 'driver_id'],
@@ -136,7 +175,7 @@ def load_yandex_driver_profiles():
                     ]
                 )
             except Exception as e:
-                logger.error("Ошибка в обновлении списка водителей: %s", e)
+                logger.error(f"{park} Ошибка в обновлении списка водителей: %s", e)
 
     return Response({'massage': 'Успешно обновлен список водителей'}, status=status.HTTP_200_OK)
 

@@ -1,0 +1,108 @@
+upstream backend_wcgi {
+    server 0.0.0.0:8000;
+}
+
+upstream backend_flower {
+    server 0.0.0.0:5555;
+}
+
+# Блокировка плохих User-Agent
+map $http_user_agent $bad_bot {
+    default 0;
+    ~*(wget|curl|nikto|sqlmap|nmap|zgrab|python-requests|scan|bot|crawl) 1;
+}
+
+# Блокировка опасных URI
+map $request_uri $bad_uri {
+    default 0;
+    ~*(phpunit|\.env|wp-|adminer|config\.|\.git|\.sql|eval-stdin) 1;
+}
+
+server {
+	listen 443 ssl http2;
+	server_name agent-report.ru;
+
+	ssl_certificate /etc/letsencrypt/live/agent-report.ru/fullchain.pem;
+	ssl_certificate_key /etc/letsencrypt/live/agent-report.ru/privkey.pem;
+
+    access_log /home/logs/nginx/nginx-access.log;
+    error_log /home/logs/nginx/nginx-error.log;
+
+    # Безопасность
+    add_header X-Content-Type-Options "nosniff";
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-XSS-Protection "1; mode=block";
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+
+    location / {
+        try_files $uri /index.html
+        proxy_pass http://backend_wcgi;
+        proxy_http_version 1.1;
+        proxy_read_timeout 86400;
+        proxy_redirect off;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $server_name;
+    }
+
+    location /static/ {
+        root /home/report;
+    }
+
+    location /media/ {
+        root /home/report;
+    }
+
+    location /admin/ {
+        proxy_pass http://backend_wcgi;
+        proxy_set_header HOST $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /flower/ {
+        proxy_pass http://backend_flower;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /bot/ {
+        proxy_pass http://backend_wcgi;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /api/ {
+        proxy_pass http://backend_wcgi;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # Запрет доступа к скрытым файлам
+    location ~ /\.(?!well-known) {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+}
+
+server {
+    listen 80;
+    server_name agent-report.ru;
+
+    if ($host = agent-report.ru) {
+        return 301 https://$host$request_uri;
+    }
+    return 404;
+}

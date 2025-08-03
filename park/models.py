@@ -126,8 +126,20 @@ class Driver(models.Model):
     middle_name = models.CharField(max_length=255, verbose_name='отчество', blank=True)
     driver_license_number = models.CharField(max_length=255, verbose_name='номер ВУ', blank=True)
     driver_license_country = models.CharField(max_length=255, verbose_name='страна ВУ', blank=True,)
-    driver_license_issue_date = models.CharField(max_length=255, verbose_name='дата выдачи ВУ', blank=True)
-    driver_license_expiration_date = models.CharField(max_length=255, verbose_name='дата окончания ВУ', blank=True)
+    driver_license_issue_date = models.CharField(
+        max_length=255,
+        verbose_name='дата выдачи ВУ',
+        blank=True,
+        null=True,
+        default=None
+    )
+    driver_license_expiration_date = models.CharField(
+        max_length=255,
+        verbose_name='дата окончания ВУ',
+        blank=True,
+        null=True,
+        default=None
+    )
     work_status = models.CharField(max_length=255, verbose_name='статус работы водителя', blank=True,)
     work_rule = models.ForeignKey(
         DriverWorkRule,

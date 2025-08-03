@@ -1,0 +1,40 @@
+upstream backend {
+    server localhost:8000;
+}
+
+server {
+	listen 80;
+    server_name agent-report.ru;
+	
+	root /home/dialog/backend;
+    index index.htm index.html index.nginx-debian.html;
+
+    access_log /home/logs/nginx/nginx-access.log;
+    error_log /home/logs/nginx/nginx-error.log;
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+
+    location /static/ {
+        root /home/report;
+    }
+
+	location /media/ {
+	    root /home/report;
+    }
+
+	location /api {
+        try_files $uri @proxy_api;
+    }
+    location /admin {
+        try_files $uri @proxy_api;
+    }
+
+    location @proxy_api {
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Url-Scheme $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Host $http_host;
+        proxy_redirect off;
+        proxy_pass http://backend;
+    }
+}

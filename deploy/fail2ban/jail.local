@@ -1,0 +1,49 @@
+[DEFAULT]
+# Базовые настройки
+bantime = 1d
+findtime = 1h
+maxretry = 3
+banaction = iptables-ipset-proto6
+ignoreip = 127.0.0.1/8 ::1
+backend = auto
+
+[sshd]
+enabled = true
+maxretry = 6
+port = ssh
+logpath = %(sshd_log)s
+banaction = %(banaction_allports)s
+
+[nginx-bad-requests]
+enabled = true
+port = http,https
+filter = nginx-bad-requests
+logpath = /home/logs/nginx/access.log
+maxretry = 3
+findtime = 10m
+bantime = 1w
+
+[nginx-bad-bots]
+enabled = true
+port = http,https
+filter = nginx-bad-bots
+logpath = /home/logs/nginx/access.log
+maxretry = 2
+findtime = 6h
+bantime = 1w
+
+[nginx-http-auth]
+enabled = true
+port = http,https
+filter = nginx-http-auth
+logpath = /home/logs/nginx/error.log
+maxretry = 3
+bantime = 1d
+
+[nginx-noscript]
+enabled = true
+port = http,https
+filter = nginx-noscript
+logpath = /home/logs/nginx/access.log
+maxretry = 5
+bantime = 1w
