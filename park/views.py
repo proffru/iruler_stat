@@ -14,12 +14,12 @@ from park.models import (
     Park,
     Driver,
     Order,
-    Transaction, Account, DriverWorkRule,
+    Transaction, Account, DriverWorkRule, Car,
 )
 from park.utils import (
     get_profiles_list,
     post_orders_list,
-    post_park_transactions_list, get_driver_work_rules,
+    post_park_transactions_list, get_driver_work_rules, post_car_list, post_transaction_categories_list,
 )
 
 logger = logging.getLogger(__name__)
@@ -190,11 +190,10 @@ def load_order(ended_at_from=None, ended_at_to=None):
         client_id = park.client_id
         api_key = park.api_key
         park_id = park.park_id
-        time_zone = park.time_zone
 
         if not ended_at_from or not ended_at_to:
             # Получаем текущее время как объект datetime
-            now = datetime.now(pytz.timezone(time_zone))
+            now = datetime.now(pytz.timezone('Europe/Moscow'))
 
             # Устанавливаем ended_at_from как "сейчас минус 2 часа"
             ended_at_from = now - timedelta(hours=2)
@@ -213,12 +212,10 @@ def load_order(ended_at_from=None, ended_at_to=None):
             api_key,
             client_id,
             ended_at_from,
-            ended_at_to,
-            time_zone
+            ended_at_to
         )
-
-        if not data:
-            return
+        if not data or not data['orders']:
+            continue
 
         order_entries = data.get('orders', [])
 
@@ -235,6 +232,21 @@ def load_order(ended_at_from=None, ended_at_to=None):
                 {d.driver_id: d for d in Driver.objects.filter(driver_id__in=batch)}
             )
 
+        # 1. Собираем все car_id из заказов
+        car_ids = []
+        for order in data['orders']:
+            if isinstance(order, dict) and order.get('car'):
+                car_ids.append(order['car']['id'])
+
+        # 2. Получаем существующие автомобили одним запросом
+        # Создаем словарь {car_id: car_object} для быстрого поиска
+        existing_cars = {car.car_id: car for car in Car.objects.filter(car_id__in=car_ids)}
+
+        # existing_cars = {
+        #     car.car_id: car
+        #     for car in Car.objects.filter(car_id__in=car_ids)
+        # } if car_ids else {}
+
         orders_to_create = []
 
         for order_data in order_entries:
@@ -242,13 +254,37 @@ def load_order(ended_at_from=None, ended_at_to=None):
             if not driver:
                 continue
 
+            # Проверяем наличие машины в базе
+            car = existing_cars.get(order['car']['id']) if order.get('car') else None
+
+            # Безопасное получение адреса назначения
+            route_points = order_data.get('route_points', [])
+            if route_points:  # Если есть точки маршрута
+                last_point = route_points[-1]
+                address_to = last_point['address']
+                address_to_lat = float(last_point['lat'])
+                address_to_lon = float(last_point['lon'])
+            else:  # Если точек маршрута нет
+                address_to = ''
+                address_to_lat = 0.0
+                address_to_lon = 0.0
+
             orders_to_create.append(Order(
                 park=park,
                 driver=driver,
                 order_id=order_data['id'],
-                order_category=order_data['category'],
-                ended_at=order_data['ended_at'],
-                price=order_data['price'],
+                created_at=order_data['created_at'],
+                status=order_data['status'],
+                payment_method=order_data.get('payment_method', ''),
+                price=order_data.get('price', 0),
+                address_from=order_data['address_from']['address'],
+                address_from_lat=order_data['address_from']['lat'],
+                address_from_lon=order_data['address_from']['lon'],
+                address_to=address_to,
+                address_to_lat=address_to_lat,
+                address_to_lon=address_to_lon,
+                car=car,
+                cancellation_description=order_data.get('cancellation_description', '')
             ))
 
         if orders_to_create:
@@ -257,12 +293,14 @@ def load_order(ended_at_from=None, ended_at_to=None):
                     orders_to_create,
                     batch_size=batch_size,
                     ignore_conflicts=True,
+                    unique_fields=['park', 'order_id'],
+                    update_fields=['status', 'price']
                 )
             except Exception as e:
                 logger.error("Ошибка в добавлении заказов: %s", e)
 
     return Response({'massage': 'заказы загружены'}, status=status.HTTP_200_OK)
-
+load_order()
 
 def load_park_data_from_file():
     """Загрузить id парков из эксель"""
@@ -287,88 +325,59 @@ def load_park_data_from_file():
         print(f"Park: {park}, Key: {key}, Client: {client}")
 
 
-def load_transactions_regular_charges(ended_at_from=None, ended_at_to=None):
-    """Загрузка транзакций для определения корректности периодических списаний"""
-    category_ids = 'partner_service_recurring_payment'
-    batch_size = 200  # Задайте желаемый размер пакета
+def load_cars(park=None):
+    """Загрузить список автомобилей"""
+    batch_size = 200
 
     qs = Park.objects.filter(is_active=True)
+    # нужна выгрузка по конкретному парку
+    if park:
+        qs = qs.filter(profile__pk=park)
 
-    transactions_to_create = []
+    cars_to_create = []
 
-    for park in qs:
-        client_id = park.client_id
-        api_key = park.api_key
-        park_id = park.park_id
-        time_zone = park.time_zone
-        tz_info = pytz.timezone(time_zone) if time_zone else pytz.UTC
+    for park_data in qs:
+        client_id = park_data.client_id
+        api_key = park_data.api_key
+        park_id = park_data.park_id
 
-        # Обработка временных диапазонов
-        if not ended_at_from or not ended_at_to:
-            now = datetime.now(tz_info)
-            ended_at_from = now - timedelta(days=1)
-            ended_at_to = now
-        else:
-            # Если даты — строки, парсим их
-            if isinstance(ended_at_from, str):
-                ended_at_from = parse_datetime(ended_at_from)
-            if isinstance(ended_at_to, str):
-                ended_at_to = parse_datetime(ended_at_to)
+        data = post_car_list(park_id, api_key, client_id)
+        if data:
+            for car_data in data['cars']:
+                # Преобразуем amenities в строку
+                amenities_str = ', '.join(
+                    item for sublist in car_data.get('amenities', [])
+                    for item in sublist
+                ) if car_data.get('amenities') else ''
 
-            # Приводим к нужному часовому поясу
-            ended_at_from = ended_at_from.astimezone(tz_info)
-            ended_at_to = ended_at_to.astimezone(tz_info)
+                # Преобразуем категории в строку
+                categories_str = ', '.join(
+                    item for sublist in car_data.get('category', [])
+                    for item in sublist
+                ) if car_data.get('category') else ''
 
-        data = post_park_transactions_list(
-            park_id,
-            api_key,
-            client_id,
-            category_ids,
-            ended_at_from,
-            ended_at_to,
-            time_zone
-        )
-
-        if not data:
-            return
-
-        transactions_entries = data.get('transactions', [])
-
-        if not transactions_entries:
-            continue
-
-        # Получаем все уникальные driver_id
-        driver_ids = list({transactions['driver_profile_id'] for transactions in transactions_entries})
-
-        # Загружаем всех водителей одним запросом
-        drivers_map = {d.driver_id: d for d in Driver.objects.filter(driver_id__in=driver_ids)}
-
-        for transaction_data in transactions_entries:
-            driver = drivers_map.get(transaction_data['driver_profile_id'])
-            if not driver:
-                continue
-
-            transactions_to_create.append(Transaction(
-                park=park,
-                driver=driver,
-                transaction_id=transaction_data['id'],
-                event_at=transaction_data['event_at'],
-                category_id=transaction_data['category_id'],
-                category_name=transaction_data['category_name'],
-                amount=transaction_data['amount'],
-                description=transaction_data['description']
-            ))
-
-        if transactions_to_create:
-            try:
-                Transaction.objects.bulk_create(
-                    transactions_to_create,
-                    batch_size=batch_size,
-                    ignore_conflicts=True,
-                    unique_fields=['park', 'transaction_id'],
-                    update_fields=['amount'],
+                car = Car(
+                    park=park_data,
+                    car_id=car_data['id'],
+                    brand=car_data['brand'],
+                    model=car_data['model'],
+                    year=car_data['year'],
+                    vin=car_data.get('vin', ''),
+                    color=car_data.get('color', ''),
+                    number=car_data.get('number', ''),
+                    callsign=car_data.get('callsign', ''),
+                    amenities=amenities_str,
+                    category=categories_str,
+                    registration_cert=car_data.get('registration_cert', ''),
                 )
-            except Exception as e:
-                logger.error("Ошибка в добавлении транзакций: %s", e)
+                cars_to_create.append(car)
 
-    return Response({'massage': 'транзакции загружены'}, status=status.HTTP_200_OK)
+            Car.objects.bulk_create(
+                cars_to_create,
+                batch_size=batch_size,
+                ignore_conflicts=True,
+                unique_fields=['car_id'],
+            )
+
+    return HttpResponse("Успешно обновлен список водителей", content_type="application/json; charset=utf-8")
+

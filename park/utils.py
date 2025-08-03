@@ -31,6 +31,12 @@ URL_API_POST_TRANSACTIONS_CATEGORIES_LIST = '/v2/parks/transactions/categories/l
 # Получение списка условий работы GET
 URL_API_GET_WORK_RULES = '/v1/parks/driver-work-rules'
 
+# Получение списка автомобилей POST (car_list)
+URL_API_CARS_LIST_POST = '/v1/parks/cars/list'
+
+# Получение списка категорий транзакций POST
+URL_API_POST_TRANSACTION_CATEGORIES_LIST = '/v2/parks/transactions/categories/list'
+
 
 def get_headers(park_id, api_key, client_id):
     """Заголовки"""
@@ -169,7 +175,7 @@ def get_profiles_list(park_id, api_key, client_id):
     }
 
 
-def post_orders_list(park_id, api_key, client_id, ended_at_from, ended_at_to, time_zone, driver_id=None):
+def post_orders_list(park_id, api_key, client_id, ended_at_from, ended_at_to):
     """Получение списка заказов"""
     URL = URL_API_YANDEX + URL_API_POST_ORDERS_LIST
 
@@ -188,8 +194,8 @@ def post_orders_list(park_id, api_key, client_id, ended_at_from, ended_at_to, ti
         ended_at_to_dt = ended_at_to  # Если это уже datetime, преобразование не нужно
 
     # Устанавливаем время и добавляем временную зону
-    ended_at_from_dt = ended_at_from_dt.replace(hour=0, minute=0, second=0, tzinfo=pytz.timezone(time_zone))
-    ended_at_to_dt = ended_at_to_dt.replace(hour=23, minute=59, second=59, tzinfo=pytz.timezone(time_zone))
+    ended_at_from_dt = ended_at_from_dt.replace(hour=0, minute=0, second=0, tzinfo=pytz.timezone('Europe/Moscow'))
+    ended_at_to_dt = ended_at_to_dt.replace(hour=23, minute=59, second=59, tzinfo=pytz.timezone('Europe/Moscow'))
 
     # Преобразуем в ISO 8601
     ended_at_from_iso = ended_at_from_dt.isoformat()
@@ -216,19 +222,10 @@ def post_orders_list(park_id, api_key, client_id, ended_at_from, ended_at_to, ti
         }
     }
 
-    if driver_id:
-        driver_data = {
-            'driver_profile': {
-                'id': driver_id
-            }
-        }
-        data['query']['park'].update(driver_data)
-
     json_total = []
     response = requests.request('POST', URL, headers=headers, json=data)
     if response.status_code == 200:
         json_total = response.json()['orders']
-        print(len(json_total))
         try:
             while response.json().get('cursor'):
                 cursor = {
@@ -343,6 +340,69 @@ def get_driver_work_rules(park_id, api_key, client_id):
     headers = get_headers(park_id, api_key, client_id)
     params = {'park_id': park_id}
     response = requests.request('GET', URL, headers=headers, params=params)
+    if response.status_code == 200:
+        return response.json()
+    return None
+
+
+def post_car_list(park_id, api_key, client_id):
+    """Получение списка автомобилей"""
+    URL = URL_API_YANDEX + URL_API_CARS_LIST_POST
+
+    # заголовки
+    headers = get_headers(park_id, api_key, client_id)
+
+    # получили общее количество
+    total = get_total(park_id, api_key, client_id, URL)
+    if not total:
+        return None
+    limit = 1000
+    offset = 0
+    count_pages = math.ceil(total / limit)
+
+    json_total = None
+    # для каждой страницы
+    for page in range(count_pages):
+        # количество автомобилей
+        count_cars = total - (page * limit)
+        if count_cars > limit:
+            count_cars = limit
+
+        data = {
+            'limit': limit,
+            'offset': offset,
+            'query': {
+                'park': {
+                    'id': park_id,
+                },
+            }
+        }
+        offset += count_cars
+
+        response = requests.request('POST', URL, headers=headers, json=data)
+        if response.status_code == 200:
+            if not json_total:
+                json_total = response.json()['cars']
+            json_total += response.json()['cars']
+
+    return {
+        'cars': json_total
+    }
+
+
+def post_transaction_categories_list(park_id, api_key, client_id):
+    """Получение списка категорий транзакций"""
+    URL = URL_API_YANDEX + URL_API_POST_TRANSACTION_CATEGORIES_LIST
+    data = {
+        'query': {
+            'park': {
+                'id': park_id,
+            }
+        }
+    }
+    # заголовки
+    headers = get_headers(park_id, api_key, client_id)
+    response = requests.request('POST', URL, headers=headers, json=data)
     if response.status_code == 200:
         return response.json()
     return None

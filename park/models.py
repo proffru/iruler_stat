@@ -64,10 +64,9 @@ class Car(models.Model):
     number = models.CharField(max_length=255, verbose_name='государственный номер')
     callsign = models.CharField(max_length=255, verbose_name='позывной')
     status = models.CharField(max_length=255, verbose_name='статус')
-    amenities = models.CharField(max_length=255, verbose_name='удобства', blank=True)
-    category = models.CharField(max_length=255, verbose_name='категория ТС', blank=True)
+    amenities = models.CharField(max_length=1500, verbose_name='удобства', blank=True)
+    category = models.CharField(max_length=1500, verbose_name='категория ТС', blank=True)
     registration_cert = models.CharField(max_length=255, verbose_name='свидетельство о регистрации')
-    is_park_property = models.BooleanField(verbose_name='собственность парка', default=False)
 
     class Meta:
         verbose_name = 'автомобиль'
