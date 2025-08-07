@@ -21,12 +21,12 @@
 
 ## На удаленном сервере
 
-    ssh -p 22 root@217.114.12.183 -i ~/.ssh/kozlove
+    ssh -p 22 root@62.113.108.43 -i ~/.ssh/kozlove
     
 Для быстрого запуска виртуального окружения
     
-    cd /home/report/
-    source /home/report/venv/bin/activate
+    cd /home/iruler/
+    source /home/iruler/venv/bin/activate
 
     supervisorctl stop all
     supervisorctl reread
@@ -60,8 +60,8 @@
 
 
 # Настройки бэкэнд
-    mkdir /home/report
-    cd /home/report
+    mkdir /home/iruler
+    cd /home/iruler
 
 ## Создаем и настраиваем виртуальное окружение
     python3 -m venv venv
@@ -95,7 +95,7 @@
 # SSL
 Проверить nginx nginx -t
 
-    sudo certbot certonly --nginx -d agent-report.ru -d www.agent-report.ru
+    sudo certbot certonly --nginx -d iruler-stat.kozlove.ru
 
 
 # Безопасность 

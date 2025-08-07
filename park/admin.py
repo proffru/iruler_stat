@@ -71,8 +71,8 @@ class OrderAdmin(admin.ModelAdmin):
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
     save_on_top = True
-    list_display = ('transaction_id', 'driver', 'event_at', 'amount', 'category')
-    list_filter = ('category', 'park')
+    list_display = ('transaction_id', 'driver', 'event_at', 'amount', 'category_name')
+    list_filter = ('category_name', 'park')
     search_fields = ('transaction_id', 'driver__last_name', 'driver__first_name')
     raw_id_fields = ('park', 'driver')
     date_hierarchy = 'event_at'

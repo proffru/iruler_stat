@@ -18,19 +18,28 @@ app.conf.broker_transport_options = {
     'visibility_timeout': 1800,
 }
 
+
 # Исходный словарь
 beat_schedule = {
+    'Загрузка условий работы': {
+        'task': 'park.tasks.load_work_rules_celery',
+        'schedule': crontab(hour='*/1', minute=0)
+    },
     'Загрузка профилей водителей': {
         'task': 'park.tasks.load_yandex_driver_profiles_celery',
+        'schedule': crontab(minute='*/30')
+    },
+    'Загрузка автомобилей': {
+        'task': 'park.tasks.load_cars_celery',
         'schedule': crontab(minute='*/45')
     },
     'Загрузка заказов': {
         'task': 'park.tasks.load_order_celery',
         'schedule': crontab(minute='*/30')
     },
-    'Загрузка транзакций периодических списаний': {
-        'task': 'park.tasks.load_transactions_regular_charges_celery',
-        'schedule': crontab(hour='*/3', minute='0')
+    'Загрузка транзакций': {
+        'task': 'park.tasks.load_transactions_celery',
+        'schedule': crontab(minute='*/30')
     },
 }
 

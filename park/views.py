@@ -203,9 +203,9 @@ def load_order(ended_at_from=None, ended_at_to=None):
         else:
             # Если даты заданы, парсим их и добавляем временную зону
             if isinstance(ended_at_from, str):
-                ended_at_from = parse_datetime(ended_at_from).replace(tzinfo=pytz.timezone(time_zone))
+                ended_at_from = parse_datetime(ended_at_from).replace(tzinfo=pytz.timezone('Europe/Moscow'))
             if isinstance(ended_at_to, str):
-                ended_at_to = parse_datetime(ended_at_to).replace(tzinfo=pytz.timezone(time_zone))
+                ended_at_to = parse_datetime(ended_at_to).replace(tzinfo=pytz.timezone('Europe/Moscow'))
 
         data = post_orders_list(
             park_id,
@@ -241,11 +241,6 @@ def load_order(ended_at_from=None, ended_at_to=None):
         # 2. Получаем существующие автомобили одним запросом
         # Создаем словарь {car_id: car_object} для быстрого поиска
         existing_cars = {car.car_id: car for car in Car.objects.filter(car_id__in=car_ids)}
-
-        # existing_cars = {
-        #     car.car_id: car
-        #     for car in Car.objects.filter(car_id__in=car_ids)
-        # } if car_ids else {}
 
         orders_to_create = []
 
@@ -300,7 +295,7 @@ def load_order(ended_at_from=None, ended_at_to=None):
                 logger.error("Ошибка в добавлении заказов: %s", e)
 
     return Response({'massage': 'заказы загружены'}, status=status.HTTP_200_OK)
-load_order()
+
 
 def load_park_data_from_file():
     """Загрузить id парков из эксель"""
@@ -381,3 +376,74 @@ def load_cars(park=None):
 
     return HttpResponse("Успешно обновлен список водителей", content_type="application/json; charset=utf-8")
 
+
+def load_transactions():
+    """Загрузка транзакций для определения корректности периодических списаний"""
+    batch_size = 200
+
+    qs = Park.objects.filter(is_active=True)
+
+    transactions_to_create = []
+
+    for park in qs:
+        client_id = park.client_id
+        api_key = park.api_key
+        park_id = park.park_id
+
+        orders = Order.objects.filter(load_transaction_complete=False, park=park).order_by('created_at')
+        for order in orders:
+
+            data = post_park_transactions_list(
+                park_id,
+                api_key,
+                client_id,
+                order.order_id
+            )
+
+            if not data:
+                return
+
+            transactions_entries = data.get('transactions', [])
+
+            if not transactions_entries:
+                continue
+
+            # Получаем все уникальные driver_id
+            driver_ids = list({transactions['driver_profile_id'] for transactions in transactions_entries})
+
+            # Загружаем всех водителей одним запросом
+            drivers_map = {d.driver_id: d for d in Driver.objects.filter(driver_id__in=driver_ids)}
+
+            for transaction_data in transactions_entries:
+                driver = drivers_map.get(transaction_data['driver_profile_id'])
+                if not driver:
+                    continue
+
+                transactions_to_create.append(Transaction(
+                    park=park,
+                    driver=driver,
+                    order=order,
+                    transaction_id=transaction_data['id'],
+                    event_at=transaction_data['event_at'],
+                    category_id=transaction_data.get('category_id', ''),
+                    category_name=transaction_data.get('category_name', ''),
+                    amount=transaction_data.get('amount', 0),
+                    description=transaction_data.get('description', '')
+                ))
+
+                order.load_transaction_complete = True
+                order.save()
+
+        if transactions_to_create:
+            try:
+                Transaction.objects.bulk_create(
+                    transactions_to_create,
+                    batch_size=batch_size,
+                    ignore_conflicts=True,
+                    unique_fields=['park', 'transaction_id'],
+                    update_fields=['amount'],
+                )
+            except Exception as e:
+                logger.error("Ошибка в добавлении транзакций: %s", e)
+
+    return Response({'massage': 'транзакции загружены'}, status=status.HTTP_200_OK)

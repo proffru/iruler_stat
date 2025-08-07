@@ -20,10 +20,10 @@ map $request_uri $bad_uri {
 
 server {
 	listen 443 ssl http2;
-	server_name agent-report.ru;
+	server_name iruler-stat.kozlove.ru;
 
-	ssl_certificate /etc/letsencrypt/live/agent-report.ru/fullchain.pem;
-	ssl_certificate_key /etc/letsencrypt/live/agent-report.ru/privkey.pem;
+	ssl_certificate /etc/letsencrypt/live/iruler-stat.kozlove.ru/fullchain.pem;
+	ssl_certificate_key /etc/letsencrypt/live/iruler-stat.kozlove.ru/privkey.pem;
 
     access_log /home/logs/nginx/nginx-access.log;
     error_log /home/logs/nginx/nginx-error.log;
@@ -50,11 +50,11 @@ server {
     }
 
     location /static/ {
-        root /home/report;
+        root /home/iruler;
     }
 
     location /media/ {
-        root /home/report;
+        root /home/iruler;
     }
 
     location /admin/ {
@@ -73,22 +73,6 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 
-    location /bot/ {
-        proxy_pass http://backend_wcgi;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-    location /api/ {
-        proxy_pass http://backend_wcgi;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
     # Запрет доступа к скрытым файлам
     location ~ /\.(?!well-known) {
         deny all;
@@ -99,9 +83,9 @@ server {
 
 server {
     listen 80;
-    server_name agent-report.ru;
+    server_name iruler-stat.kozlove.ru;
 
-    if ($host = agent-report.ru) {
+    if ($host = iruler-stat.kozlove.ru) {
         return 301 https://$host$request_uri;
     }
     return 404;

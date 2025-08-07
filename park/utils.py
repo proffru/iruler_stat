@@ -24,7 +24,7 @@ URL_API_POST_ORDERS_LIST = '/v1/parks/orders/list'
 # Получение списка транзакций по водителю
 URL_API_POST_DRIVER_TRANSACTIONS_LIST = '/v2/parks/driver-profiles/transactions/list'
 
-URL_API_POST_PARK_TRANSACTIONS_LIST = '/v2/parks/transactions/list'
+URL_API_POST_PARK_ORDERS_TRANSACTIONS_LIST = '/v2/parks/orders/transactions/list'
 
 URL_API_POST_TRANSACTIONS_CATEGORIES_LIST = '/v2/parks/transactions/categories/list'
 
@@ -247,31 +247,12 @@ def post_orders_list(park_id, api_key, client_id, ended_at_from, ended_at_to):
     }
 
 
-def post_park_transactions_list(park_id, api_key, client_id, category_ids, ended_at_from, ended_at_to, time_zone):
+def post_park_transactions_list(park_id, api_key, client_id, order_id):
     """Получение списка транзакций по водителю (курьеру)"""
-    URL = URL_API_YANDEX + URL_API_POST_PARK_TRANSACTIONS_LIST
+    URL = URL_API_YANDEX + URL_API_POST_PARK_ORDERS_TRANSACTIONS_LIST
 
     # заголовки
     headers = get_headers(park_id, api_key, client_id)
-
-    # Проверяем, являются ли ended_at_from и ended_at_to строками
-    if isinstance(ended_at_from, str):
-        ended_at_from_dt = datetime.strptime(ended_at_from, "%Y-%m-%d")
-    else:
-        ended_at_from_dt = ended_at_from  # Если это уже datetime, преобразование не нужно
-
-    if isinstance(ended_at_to, str):
-        ended_at_to_dt = datetime.strptime(ended_at_to, "%Y-%m-%d")
-    else:
-        ended_at_to_dt = ended_at_to  # Если это уже datetime, преобразование не нужно
-
-    # Устанавливаем время и добавляем временную зону
-    ended_at_from_dt = ended_at_from_dt.replace(hour=0, minute=0, second=0, tzinfo=pytz.timezone(time_zone))
-    ended_at_to_dt = ended_at_to_dt.replace(hour=23, minute=59, second=59, tzinfo=pytz.timezone(time_zone))
-
-    # Преобразуем в ISO 8601
-    ended_at_from_iso = ended_at_from_dt.isoformat()
-    ended_at_to_iso = ended_at_to_dt.isoformat()
 
     # формируем запрос
     limit = 500
@@ -281,13 +262,9 @@ def post_park_transactions_list(park_id, api_key, client_id, category_ids, ended
         'query': {
             'park': {
                 'id': park_id,
-                'transaction': {
-                    'event_at': {
-                        'from': ended_at_from_iso,
-                        'to': ended_at_to_iso
-                    },
-                    'category_ids': [
-                        category_ids
+                'order': {
+                    'ids': [
+                        order_id
                     ]
                 }
             }

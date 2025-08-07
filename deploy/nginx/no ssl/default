@@ -4,9 +4,9 @@ upstream backend {
 
 server {
 	listen 80;
-    server_name agent-report.ru;
+    server_name 62.113.108.43;
 	
-	root /home/dialog/backend;
+	root /home/iruler;
     index index.htm index.html index.nginx-debian.html;
 
     access_log /home/logs/nginx/nginx-access.log;
@@ -15,11 +15,11 @@ server {
     location = /favicon.ico { access_log off; log_not_found off; }
 
     location /static/ {
-        root /home/report;
+        root /home/iruler;
     }
 
 	location /media/ {
-	    root /home/report;
+	    root /home/iruler;
     }
 
 	location /api {

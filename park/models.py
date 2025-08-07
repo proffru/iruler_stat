@@ -187,7 +187,7 @@ class Order(models.Model):
         related_name='order_driver',
         db_index=True
     )
-    order_id = models.CharField(max_length=255, verbose_name='id заказа', unique=True)
+    order_id = models.CharField(max_length=255, verbose_name='id заказа', unique=True, db_index=True)
     created_at = models.DateTimeField(verbose_name='создан')
     status = models.CharField(max_length=255, verbose_name='статус заказа', blank=True, default='')
     payment_method = models.CharField(max_length=255, verbose_name='способ оплаты', blank=True, default='')
@@ -207,6 +207,7 @@ class Order(models.Model):
         default=None
     )
     cancellation_description = models.CharField(max_length=255, verbose_name='описание отмены', blank=True, default='')
+    load_transaction_complete = models.BooleanField(verbose_name='загрузка транзакций завершена', default=False)
 
     class Meta:
         indexes = [
@@ -235,13 +236,18 @@ class Transaction(models.Model):
         related_name='transaction_driver',
         db_index=True
     )
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        verbose_name='заказ',
+        related_name='transaction_order',
+        db_index=True
+    )
 
     transaction_id = models.CharField(max_length=255, verbose_name='id заказа', unique=True)
     event_at = models.DateTimeField(verbose_name='завершен')
-    category = models.CharField(max_length=255, verbose_name='категория')
-    name = models.CharField(max_length=255, verbose_name='название категории', blank=True, default='')
-    group_id = models.CharField(max_length=255, verbose_name='id группы', blank=True, default='')
-    group_name = models.CharField(max_length=255, verbose_name='название группы', blank=True, default='')
+    category_id = models.CharField(max_length=255, verbose_name='id категории', blank=True, default='')
+    category_name = models.CharField(max_length=255, verbose_name='название категории', blank=True, default='')
     amount = models.DecimalField(decimal_places=4, max_digits=15, verbose_name='стоимость')
     description = models.CharField(max_length=255, verbose_name='описание')
 
