@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+import time
 
 from datetime import datetime
 
@@ -213,10 +214,7 @@ def post_orders_list(park_id, api_key, client_id, ended_at_from, ended_at_to):
                     'ended_at': {
                         'from': ended_at_from_iso,
                         'to': ended_at_to_iso,
-                    },
-                    'statuses': [
-                        'complete'
-                    ]
+                    }
                 }
             }
         }
@@ -232,6 +230,7 @@ def post_orders_list(park_id, api_key, client_id, ended_at_from, ended_at_to):
                     'cursor': response.json().get('cursor')
                 }
                 data.update(cursor)
+                time.sleep(10)
                 response = requests.request('POST', URL, headers=headers, json=data)
                 try:
                     response.json()

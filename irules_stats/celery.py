@@ -41,12 +41,11 @@ beat_schedule = {
         'task': 'park.tasks.load_transactions_celery',
         'schedule': crontab(minute='*/30')
     },
+    'run_load_orders_once': {
+        'task': 'park.tasks.run_load_orders',
+        'schedule': crontab(minute=0, hour=0),  # например, запускать каждый день
+        'one_off': True  # Celery Beat не умеет нативно, но можно отключить в коде
+    },
 }
-
-# Сортируем словарь по ключам (именам задач)
-sorted_beat_schedule = dict(sorted(beat_schedule.items(), key=lambda x: x[0], reverse=True))
-
-# Присваиваем отсортированный словарь в конфигурацию Celery
-app.conf.beat_schedule = sorted_beat_schedule
 
 app.conf.timezone = 'Europe/Moscow'

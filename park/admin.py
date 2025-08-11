@@ -9,6 +9,8 @@ from park.models import (
     Transaction
 )
 
+admin.site.site_title = 'Iruler'
+admin.site.site_header = 'Iruler'
 
 @admin.register(Park)
 class ParkAdmin(admin.ModelAdmin):

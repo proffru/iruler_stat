@@ -268,6 +268,8 @@ def load_order(ended_at_from=None, ended_at_to=None):
                 park=park,
                 driver=driver,
                 order_id=order_data['id'],
+                short_id=order_data['short_id'],
+                category=order_data.get('category', ''),
                 created_at=order_data['created_at'],
                 status=order_data['status'],
                 payment_method=order_data.get('payment_method', ''),
@@ -278,6 +280,7 @@ def load_order(ended_at_from=None, ended_at_to=None):
                 address_to=address_to,
                 address_to_lat=address_to_lat,
                 address_to_lon=address_to_lon,
+                mileage=order_data.get('mileage', 0),
                 car=car,
                 cancellation_description=order_data.get('cancellation_description', '')
             ))
@@ -289,7 +292,7 @@ def load_order(ended_at_from=None, ended_at_to=None):
                     batch_size=batch_size,
                     ignore_conflicts=True,
                     unique_fields=['park', 'order_id'],
-                    update_fields=['status', 'price']
+                    update_fields=['status', 'price', 'short_id', 'category', 'mileage']
                 )
             except Exception as e:
                 logger.error("Ошибка в добавлении заказов: %s", e)
@@ -354,6 +357,7 @@ def load_cars(park=None):
                 car = Car(
                     park=park_data,
                     car_id=car_data['id'],
+                    status=car_data.get('status'),
                     brand=car_data['brand'],
                     model=car_data['model'],
                     year=car_data['year'],
@@ -372,6 +376,7 @@ def load_cars(park=None):
                 batch_size=batch_size,
                 ignore_conflicts=True,
                 unique_fields=['car_id'],
+                update_fields=['status']
             )
 
     return HttpResponse("Успешно обновлен список водителей", content_type="application/json; charset=utf-8")

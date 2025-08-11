@@ -56,6 +56,7 @@ class Car(models.Model):
     """Автомобиль"""
     park = models.ForeignKey(Park, on_delete=models.CASCADE, verbose_name='парк')
     car_id = models.CharField(max_length=32, verbose_name='автомобиль', unique=True)
+    status = models.CharField(max_length=255, verbose_name='статус', blank=True, default='')
     brand = models.CharField(max_length=255, verbose_name='бренд')
     model = models.CharField(max_length=255, verbose_name='модель')
     year = models.PositiveSmallIntegerField(verbose_name='год')
@@ -188,8 +189,10 @@ class Order(models.Model):
         db_index=True
     )
     order_id = models.CharField(max_length=255, verbose_name='id заказа', unique=True, db_index=True)
+    short_id = models.CharField(max_length=255, verbose_name='короткий id заказа')
     created_at = models.DateTimeField(verbose_name='создан')
     status = models.CharField(max_length=255, verbose_name='статус заказа', blank=True, default='')
+    category = models.CharField(max_length=255, verbose_name='категория', blank=True, default='')
     payment_method = models.CharField(max_length=255, verbose_name='способ оплаты', blank=True, default='')
     price = models.DecimalField(decimal_places=4, max_digits=15, verbose_name='стоимость')
     address_from = models.CharField(max_length=500, verbose_name='адрес откуда', blank=True, default='')
@@ -198,6 +201,7 @@ class Order(models.Model):
     address_to = models.CharField(max_length=500, verbose_name='адрес куда', blank=True, default='')
     address_to_lat = models.CharField(max_length=50, verbose_name='адрес куда широта', blank=True, default='')
     address_to_lon = models.CharField(max_length=50, verbose_name='адрес куда долгота', blank=True, default='')
+    mileage = models.CharField(max_length=255, verbose_name='пробег', blank=True, default=0)
     car = models.ForeignKey(
         Car,
         on_delete=models.PROTECT,
