@@ -252,6 +252,7 @@ class Transaction(models.Model):
     event_at = models.DateTimeField(verbose_name='завершен')
     category_id = models.CharField(max_length=255, verbose_name='id категории', blank=True, default='')
     category_name = models.CharField(max_length=255, verbose_name='название категории', blank=True, default='')
+    group_id = models.CharField(max_length=255, verbose_name='группа', blank=True, default='')
     amount = models.DecimalField(decimal_places=4, max_digits=15, verbose_name='стоимость')
     description = models.CharField(max_length=255, verbose_name='описание')
 
@@ -265,3 +266,17 @@ class Transaction(models.Model):
 
     def __str__(self):
         return f'{self.driver.last_name} {self.driver.first_name} {self.driver.middle_name}'
+
+
+class OrdersLoadState(models.Model):
+    """Статус загрузки заказов"""
+    last_loaded_datetime = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"OrdersLoadState(last_loaded_datetime={self.last_loaded_datetime})"
+
+    class Meta:
+        verbose_name = 'статус загрузки заказов'
+        verbose_name_plural = 'статусы загрузки заказов'
+        ordering = ['-updated_at']

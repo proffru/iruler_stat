@@ -6,7 +6,7 @@ from park.models import (
     Account,
     Driver,
     Order,
-    Transaction
+    Transaction, OrdersLoadState
 )
 
 admin.site.site_title = 'Iruler'
@@ -79,3 +79,8 @@ class TransactionAdmin(admin.ModelAdmin):
     raw_id_fields = ('park', 'driver')
     date_hierarchy = 'event_at'
     ordering = ('-event_at',)
+
+
+@admin.register(OrdersLoadState)
+class OrdersLoadStateAdmin(admin.ModelAdmin):
+    list_display = ("last_loaded_datetime", "updated_at")

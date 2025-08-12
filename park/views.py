@@ -1,4 +1,5 @@
 import logging
+import time
 
 import pandas as pd
 from datetime import datetime, timedelta
@@ -6,6 +7,7 @@ from datetime import datetime, timedelta
 import pytz
 from dateutil import parser
 from django.http import HttpResponse
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.response import Response
@@ -14,7 +16,7 @@ from park.models import (
     Park,
     Driver,
     Order,
-    Transaction, Account, DriverWorkRule, Car,
+    Transaction, Account, DriverWorkRule, Car, OrdersLoadState,
 )
 from park.utils import (
     get_profiles_list,
@@ -70,7 +72,6 @@ def load_work_rules(one_park_id=None):
 def load_yandex_driver_profiles():
     """Загрузить список водителей Яндекс такси"""
     batch_size = 100
-    seen_drivers = set()
 
     qs = Park.objects.filter(is_active=True).prefetch_related('driver_park')
 
@@ -121,7 +122,7 @@ def load_yandex_driver_profiles():
                     account=account,
                     created_date=created_date
                 )
-                license = driver_data.get('driver_license', None)
+                license = driver_profile.get('driver_license', None)
 
                 # Добавляем поля водительского удостоверения только если license не None
                 if license is not None:
@@ -171,7 +172,9 @@ def load_yandex_driver_profiles():
                     update_conflicts=True,
                     unique_fields=['park', 'driver_id'],
                     update_fields=[
-                        'work_status', 'created_date', 'account', 'work_rule'
+                        'work_status', 'created_date', 'account', 'work_rule',
+                        'driver_license_number', 'driver_license_country',
+                        'driver_license_issue_date', 'driver_license_expiration_date'
                     ]
                 )
             except Exception as e:
@@ -432,6 +435,7 @@ def load_transactions():
                     event_at=transaction_data['event_at'],
                     category_id=transaction_data.get('category_id', ''),
                     category_name=transaction_data.get('category_name', ''),
+                    group_id=transaction_data.get('group_id', ''),
                     amount=transaction_data.get('amount', 0),
                     description=transaction_data.get('description', '')
                 ))
@@ -446,9 +450,50 @@ def load_transactions():
                     batch_size=batch_size,
                     ignore_conflicts=True,
                     unique_fields=['park', 'transaction_id'],
-                    update_fields=['amount'],
+                    update_fields=['amount', 'group_id'],
                 )
             except Exception as e:
                 logger.error("Ошибка в добавлении транзакций: %s", e)
 
     return Response({'massage': 'транзакции загружены'}, status=status.HTTP_200_OK)
+
+
+def process_orders_interval(start, end):
+    """Загружает заказы в заданном временном диапазоне."""
+    logger.info(f"Loading orders from {start} to {end}")
+    load_order(start.strftime("%Y-%m-%d %H:%M:%S"), end.strftime("%Y-%m-%d %H:%M:%S"))
+
+
+def get_next_interval(start, end_limit, step_hours: int = 2):
+    """Генератор, возвращающий интервалы по step_hours."""
+    current_start = start
+    while current_start < end_limit:
+        current_end = current_start + timedelta(hours=step_hours)
+        if current_end > end_limit:
+            current_end = end_limit
+        yield current_start, current_end
+        current_start = current_end
+
+
+def run_load_orders_logic():
+    """Основная логика загрузки заказов по 2 часа."""
+    end_date_limit = timezone.make_aware(timezone.datetime(2025, 8, 15))
+
+    state, _ = OrdersLoadState.objects.get_or_create(
+        id=1,
+        defaults={"last_loaded_datetime": timezone.make_aware(timezone.datetime(2025, 3, 30))}
+    )
+
+    start_point = state.last_loaded_datetime or timezone.make_aware(timezone.datetime(2025, 3, 30))
+
+    for start, end in get_next_interval(start_point, end_date_limit, step_hours=2):
+        try:
+            process_orders_interval(start, end)
+        except Exception as e:
+            logger.error(f"Error loading orders: {e}")
+            break
+
+        state.last_loaded_datetime = end
+        state.save(update_fields=["last_loaded_datetime"])
+
+        time.sleep(20)

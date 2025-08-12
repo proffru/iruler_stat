@@ -71,3 +71,7 @@
 ## Развернуть снэпшот на новом сервере
 Заходим на сервер на котором сохранен снэпшот и по ssh ставим на нужный vps
     dd if=vps.img | ssh root@ip_of_new_vps "dd of=/dev/sda"
+
+# Очистка очереди Celery (общие методы)
+
+    celery -A your_project_name purge -f

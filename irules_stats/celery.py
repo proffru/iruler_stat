@@ -5,7 +5,7 @@ from celery.utils.log import get_task_logger
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'irules_stats.settings')
 
-app = Celery('irules')
+app = Celery('irules_stats')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 app.conf.broker_connection_retry_on_startup = True
 app.autodiscover_tasks()
@@ -17,7 +17,6 @@ logger = get_task_logger(__name__)
 app.conf.broker_transport_options = {
     'visibility_timeout': 1800,
 }
-
 
 # Исходный словарь
 beat_schedule = {
@@ -41,11 +40,12 @@ beat_schedule = {
         'task': 'park.tasks.load_transactions_celery',
         'schedule': crontab(minute='*/30')
     },
-    'run_load_orders_once': {
-        'task': 'park.tasks.run_load_orders',
-        'schedule': crontab(minute=0, hour=0),  # например, запускать каждый день
-        'one_off': True  # Celery Beat не умеет нативно, но можно отключить в коде
+    'Старые заказы': {
+        'task': 'park.tasks.load_old_orders_celery',
+        'schedule': crontab(minute=30, hour=12)
     },
 }
+
+app.conf.beat_schedule = beat_schedule
 
 app.conf.timezone = 'Europe/Moscow'
