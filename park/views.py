@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 
 import pytz
 from dateutil import parser
+from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -16,7 +17,11 @@ from park.models import (
     Park,
     Driver,
     Order,
-    Transaction, Account, DriverWorkRule, Car, OrdersLoadState,
+    Transaction,
+    Account,
+    DriverWorkRule,
+    Car,
+    DateProcessing,
 )
 from park.utils import (
     get_profiles_list,
@@ -458,42 +463,43 @@ def load_transactions():
     return Response({'massage': 'транзакции загружены'}, status=status.HTTP_200_OK)
 
 
-def process_orders_interval(start, end):
-    """Загружает заказы в заданном временном диапазоне."""
-    logger.info(f"Loading orders from {start} to {end}")
-    load_order(start.strftime("%Y-%m-%d %H:%M:%S"), end.strftime("%Y-%m-%d %H:%M:%S"))
+def process_dates_with_resume():
+    """
+    Обрабатывает даты с возможностью продолжения с последней успешной даты
+    """
+    start_date = datetime.strptime('2025-04-01', '%Y-%m-%d').date()
+    end_date = datetime.strptime('2025-08-20', '%Y-%m-%d').date()
 
-
-def get_next_interval(start, end_limit, step_hours: int = 2):
-    """Генератор, возвращающий интервалы по step_hours."""
-    current_start = start
-    while current_start < end_limit:
-        current_end = current_start + timedelta(hours=step_hours)
-        if current_end > end_limit:
-            current_end = end_limit
-        yield current_start, current_end
-        current_start = current_end
-
-
-def run_load_orders_logic():
-    """Основная логика загрузки заказов по 2 часа."""
-    end_date_limit = timezone.make_aware(timezone.datetime(2025, 8, 15))
-
-    state, _ = OrdersLoadState.objects.get_or_create(
-        id=1,
-        defaults={"last_loaded_datetime": timezone.make_aware(timezone.datetime(2025, 3, 30))}
+    # Получаем или создаем запись
+    processing_record, created = DateProcessing.objects.get_or_create(
+        defaults={'last_processed_date': start_date - timedelta(days=1)}
     )
 
-    start_point = state.last_loaded_datetime or timezone.make_aware(timezone.datetime(2025, 3, 30))
+    current_date = processing_record.last_processed_date + timedelta(days=1)
 
-    for start, end in get_next_interval(start_point, end_date_limit, step_hours=2):
+    # Обрабатываем даты
+    while current_date <= end_date:
         try:
-            process_orders_interval(start, end)
+            # Основная логика обработки
+            load_order(
+                current_date.strftime('%Y-%m-%d'),
+                current_date.strftime('%Y-%m-%d')
+            )
+
+            # Обновляем последнюю дату
+            processing_record.last_processed_date = current_date
+            processing_record.save()
+
+            # # После успешной обработки
+            # DateProcessing.objects.update_or_create(
+            #     id=processing_record.id,
+            #     defaults={'last_processed_date': current_date}
+            # )
+
+            print(f"Успешно обработано: {current_date}")
+
         except Exception as e:
-            logger.error(f"Error loading orders: {e}")
+            print(f"Ошибка при обработке даты {current_date}: {str(e)}")
             break
 
-        state.last_loaded_datetime = end
-        state.save(update_fields=["last_loaded_datetime"])
-
-        time.sleep(20)
+        current_date += timedelta(days=1)

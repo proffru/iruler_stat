@@ -10,7 +10,7 @@ from park.views import (
     load_order,
     load_cars,
     load_transactions,
-    run_load_orders_logic
+    process_dates_with_resume
 )
 
 logger = get_task_logger(__name__)
@@ -43,5 +43,5 @@ def load_transactions_celery():
 
 @app.task
 def load_old_orders_celery():
-    run_load_orders_logic()
+    process_dates_with_resume()
 

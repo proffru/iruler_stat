@@ -42,7 +42,7 @@ beat_schedule = {
     },
     'Старые заказы': {
         'task': 'park.tasks.load_old_orders_celery',
-        'schedule': crontab(minute=30, hour=12)
+        'schedule': crontab(minute=00, hour=00)
     },
 }
 

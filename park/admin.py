@@ -6,11 +6,13 @@ from park.models import (
     Account,
     Driver,
     Order,
-    Transaction, OrdersLoadState
+    Transaction,
+    DateProcessing
 )
 
 admin.site.site_title = 'Iruler'
 admin.site.site_header = 'Iruler'
+
 
 @admin.register(Park)
 class ParkAdmin(admin.ModelAdmin):
@@ -81,6 +83,10 @@ class TransactionAdmin(admin.ModelAdmin):
     ordering = ('-event_at',)
 
 
-@admin.register(OrdersLoadState)
-class OrdersLoadStateAdmin(admin.ModelAdmin):
-    list_display = ("last_loaded_datetime", "updated_at")
+@admin.register(DateProcessing)
+class DateProcessingAdmin(admin.ModelAdmin):
+    list_display = ('last_processed_date', 'created_at', 'updated_at')
+    list_filter = ('last_processed_date',)
+    search_fields = ('last_processed_date',)
+    readonly_fields = ('created_at', 'updated_at')
+    date_hierarchy = 'last_processed_date'

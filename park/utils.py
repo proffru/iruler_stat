@@ -230,7 +230,6 @@ def post_orders_list(park_id, api_key, client_id, ended_at_from, ended_at_to):
                     'cursor': response.json().get('cursor')
                 }
                 data.update(cursor)
-                time.sleep(10)
                 response = requests.request('POST', URL, headers=headers, json=data)
                 try:
                     response.json()

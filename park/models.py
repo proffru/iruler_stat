@@ -268,15 +268,29 @@ class Transaction(models.Model):
         return f'{self.driver.last_name} {self.driver.first_name} {self.driver.middle_name}'
 
 
-class OrdersLoadState(models.Model):
-    """Статус загрузки заказов"""
-    last_loaded_datetime = models.DateTimeField(null=True, blank=True)
-    updated_at = models.DateTimeField(auto_now=True)
+class DateProcessing(models.Model):
+    """
+    Модель для отслеживания последней обработанной даты
+    """
+    last_processed_date = models.DateField(
+        verbose_name='Последняя обработанная дата',
+    )
 
-    def __str__(self):
-        return f"OrdersLoadState(last_loaded_datetime={self.last_loaded_datetime})"
+    created_at = models.DateTimeField(
+        verbose_name='Дата создания',
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        verbose_name='Дата обновления',
+        auto_now=True,
+    )
 
     class Meta:
-        verbose_name = 'статус загрузки заказов'
-        verbose_name_plural = 'статусы загрузки заказов'
-        ordering = ['-updated_at']
+        verbose_name = 'Обработка дат'
+        verbose_name_plural = 'Обработка дат'
+        ordering = ['-last_processed_date']
+        get_latest_by = 'last_processed_date'
+
+    def __str__(self):
+        return f'Последняя обработка: {self.last_processed_date}'
