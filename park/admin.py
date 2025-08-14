@@ -28,7 +28,7 @@ class ParkAdmin(admin.ModelAdmin):
 class CarAdmin(admin.ModelAdmin):
     save_on_top = True
     list_display = ('brand', 'model', 'year', 'number', 'park', 'status')
-    list_filter = ('brand', 'status', 'park', 'year')
+    list_filter = ('status',)
     search_fields = ('brand', 'model', 'number', 'vin')
     raw_id_fields = ('park',)
     ordering = ('brand', 'model')
@@ -65,7 +65,7 @@ class DriverAdmin(admin.ModelAdmin):
 class OrderAdmin(admin.ModelAdmin):
     save_on_top = True
     list_display = ('order_id', 'driver', 'status', 'created_at', 'price')
-    list_filter = ('status', 'park', 'payment_method')
+    list_filter = ('created_at', 'load_transaction_complete', 'status', 'payment_method')
     search_fields = ('order_id', 'driver__last_name', 'driver__first_name')
     raw_id_fields = ('park', 'driver', 'car')
     date_hierarchy = 'created_at'

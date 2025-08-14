@@ -133,7 +133,7 @@ def load_yandex_driver_profiles():
                 if license is not None:
                     driver.driver_license_number = license.get('normalized_number', '')
                     driver.driver_license_country = license.get('country', '')
-                    driver.issue_date = license.get('issue_date', None)
+                    driver.driver_license_issue_date = license.get('issue_date', None)
                     driver.driver_license_expiration_date = license.get('expiration_date', None)
                 else:
                     # Явно устанавливаем None или пустые значения, если license отсутствует
@@ -208,6 +208,9 @@ def load_order(ended_at_from=None, ended_at_to=None):
 
             # Устанавливаем ended_at_to как "сейчас"
             ended_at_to = now
+
+            # таймер сна, для предотвращения 429 ошибки
+            sleep_timer = 0
         else:
             # Если даты заданы, парсим их и добавляем временную зону
             if isinstance(ended_at_from, str):
@@ -215,12 +218,16 @@ def load_order(ended_at_from=None, ended_at_to=None):
             if isinstance(ended_at_to, str):
                 ended_at_to = parse_datetime(ended_at_to).replace(tzinfo=pytz.timezone('Europe/Moscow'))
 
+            # таймер сна, для предотвращения 429 ошибки
+            sleep_timer = 20
+
         data = post_orders_list(
             park_id,
             api_key,
             client_id,
             ended_at_from,
-            ended_at_to
+            ended_at_to,
+            sleep_timer
         )
         if not data or not data['orders']:
             continue
@@ -298,7 +305,7 @@ def load_order(ended_at_from=None, ended_at_to=None):
                 Order.objects.bulk_create(
                     orders_to_create,
                     batch_size=batch_size,
-                    ignore_conflicts=True,
+                    update_conflicts=True,
                     unique_fields=['park', 'order_id'],
                     update_fields=['status', 'price', 'short_id', 'category', 'mileage']
                 )
@@ -333,7 +340,7 @@ def load_park_data_from_file():
 
 def load_cars(park=None):
     """Загрузить список автомобилей"""
-    batch_size = 200
+    batch_size = 100
 
     qs = Park.objects.filter(is_active=True)
     # нужна выгрузка по конкретному парку
@@ -348,7 +355,10 @@ def load_cars(park=None):
         park_id = park_data.park_id
 
         data = post_car_list(park_id, api_key, client_id)
-        if data:
+        if data and data['cars']:
+            # Словарь для устранения дубликатов car_id
+            unique_cars = {}
+
             for car_data in data['cars']:
                 # Преобразуем amenities в строку
                 amenities_str = ', '.join(
@@ -377,15 +387,21 @@ def load_cars(park=None):
                     category=categories_str,
                     registration_cert=car_data.get('registration_cert', ''),
                 )
-                cars_to_create.append(car)
+                # Убираем дубликаты: оставляем последнее значение
+                unique_cars[car.car_id] = car
 
-            Car.objects.bulk_create(
-                cars_to_create,
-                batch_size=batch_size,
-                ignore_conflicts=True,
-                unique_fields=['car_id'],
-                update_fields=['status']
-            )
+                # cars_to_create.append(car)
+
+            # Добавляем только уникальные машины
+            cars_to_create.extend(unique_cars.values())
+
+        Car.objects.bulk_create(
+            cars_to_create,
+            batch_size=batch_size,
+            update_conflicts=True,
+            unique_fields=['car_id'],
+            update_fields=['status']
+        )
 
     return HttpResponse("Успешно обновлен список водителей", content_type="application/json; charset=utf-8")
 
@@ -490,16 +506,10 @@ def process_dates_with_resume():
             processing_record.last_processed_date = current_date
             processing_record.save()
 
-            # # После успешной обработки
-            # DateProcessing.objects.update_or_create(
-            #     id=processing_record.id,
-            #     defaults={'last_processed_date': current_date}
-            # )
-
-            print(f"Успешно обработано: {current_date}")
+            logger.error(f"Успешно обработано: {current_date}")
 
         except Exception as e:
-            print(f"Ошибка при обработке даты {current_date}: {str(e)}")
+            logger.error(f"Ошибка при обработке даты {current_date}: {str(e)}")
             break
 
         current_date += timedelta(days=1)

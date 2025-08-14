@@ -176,7 +176,7 @@ def get_profiles_list(park_id, api_key, client_id):
     }
 
 
-def post_orders_list(park_id, api_key, client_id, ended_at_from, ended_at_to):
+def post_orders_list(park_id, api_key, client_id, ended_at_from, ended_at_to, sleep_timer=0):
     """Получение списка заказов"""
     URL = URL_API_YANDEX + URL_API_POST_ORDERS_LIST
 
@@ -226,6 +226,8 @@ def post_orders_list(park_id, api_key, client_id, ended_at_from, ended_at_to):
         json_total = response.json()['orders']
         try:
             while response.json().get('cursor'):
+                time.sleep(sleep_timer)
+
                 cursor = {
                     'cursor': response.json().get('cursor')
                 }
@@ -349,7 +351,7 @@ def post_car_list(park_id, api_key, client_id):
             'query': {
                 'park': {
                     'id': park_id,
-                },
+                }
             }
         }
         offset += count_cars
