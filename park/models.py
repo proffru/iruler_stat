@@ -270,30 +270,20 @@ class Transaction(models.Model):
 
 class DateProcessing(models.Model):
     """
-    Модель для отслеживания последней обработанной даты и периода
+    Модель для отслеживания последней обработанной даты
     """
-    PERIOD_CHOICES = [
-        ('morning', '00:00-12:00'),
-        ('evening', '12:00-00:00'),
-        ('full', 'Полный день'),
-    ]
-
     last_processed_date = models.DateField(
-        verbose_name='Последняя обработанная дата'
+        verbose_name='Последняя обработанная дата',
     )
-    last_processed_period = models.CharField(
-        verbose_name='Последний обработанный период',
-        max_length=10,
-        choices=PERIOD_CHOICES,
-        default='full'
-    )
+
     created_at = models.DateTimeField(
         verbose_name='Дата создания',
-        auto_now_add=True
+        auto_now_add=True,
     )
+
     updated_at = models.DateTimeField(
         verbose_name='Дата обновления',
-        auto_now=True
+        auto_now=True,
     )
 
     class Meta:
@@ -303,4 +293,4 @@ class DateProcessing(models.Model):
         get_latest_by = 'last_processed_date'
 
     def __str__(self):
-        return f'Обработка {self.last_processed_date} ({self.get_last_processed_period_display()})'
+        return f'Последняя обработка: {self.last_processed_date}'
