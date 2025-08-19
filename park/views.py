@@ -190,9 +190,9 @@ def load_yandex_driver_profiles():
 
 def load_order(ended_at_from=None, ended_at_to=None):
     """Загрузка заказов"""
-    batch_size = 200  # Задайте желаемый размер пакета
+    batch_size = 100  # Задайте желаемый размер пакета
 
-    qs = Park.objects.filter(is_active=True)
+    qs = Park.objects.filter(is_active=True)[9:10]
 
     for park in qs:
         client_id = park.client_id
@@ -208,9 +208,6 @@ def load_order(ended_at_from=None, ended_at_to=None):
 
             # Устанавливаем ended_at_to как "сейчас"
             ended_at_to = now
-
-            # таймер сна, для предотвращения 429 ошибки
-            sleep_timer = 0
         else:
             # Если даты заданы, парсим их и добавляем временную зону
             if isinstance(ended_at_from, str):
@@ -218,16 +215,12 @@ def load_order(ended_at_from=None, ended_at_to=None):
             if isinstance(ended_at_to, str):
                 ended_at_to = parse_datetime(ended_at_to).replace(tzinfo=pytz.timezone('Europe/Moscow'))
 
-            # таймер сна, для предотвращения 429 ошибки
-            sleep_timer = 20
-
         data = post_orders_list(
             park_id,
             api_key,
             client_id,
             ended_at_from,
             ended_at_to,
-            sleep_timer
         )
         if not data or not data['orders']:
             continue
@@ -260,12 +253,9 @@ def load_order(ended_at_from=None, ended_at_to=None):
         orders_to_create = []
 
         for order_data in order_entries:
-            driver = drivers_map.get(order_data['driver_profile']['id'])
-            if not driver:
-                continue
-
-            # Проверяем наличие машины в базе
-            car = existing_cars.get(order['car']['id']) if order.get('car') else None
+            # Проверяем наличие водителя и машины в базе
+            driver = drivers_map.get(order_data['driver_profile']['id']) if order_data.get('driver_profile') else None
+            car = existing_cars.get(order_data['car']['id']) if order_data.get('car') else None
 
             # Безопасное получение адреса назначения
             route_points = order_data.get('route_points', [])
@@ -306,7 +296,7 @@ def load_order(ended_at_from=None, ended_at_to=None):
                     orders_to_create,
                     batch_size=batch_size,
                     update_conflicts=True,
-                    unique_fields=['park', 'order_id'],
+                    unique_fields=['order_id'],
                     update_fields=['status', 'price', 'short_id', 'category', 'mileage']
                 )
             except Exception as e:
@@ -408,7 +398,7 @@ def load_cars(park=None):
 
 def load_transactions():
     """Загрузка транзакций для определения корректности периодических списаний"""
-    batch_size = 200
+    batch_size = 100
 
     qs = Park.objects.filter(is_active=True)
 
@@ -418,65 +408,82 @@ def load_transactions():
         client_id = park.client_id
         api_key = park.api_key
         park_id = park.park_id
+        print(park.name)
 
-        orders = Order.objects.filter(load_transaction_complete=False, park=park).order_by('created_at')
-        for order in orders:
+        # Предварительно выбираем активные заказы и формируем словарь по order_id
+        active_orders = Order.objects.filter(
+            load_transaction_complete=False,
+            park=park,
+        ).select_related('driver').values('order_id', 'pk', 'driver_id')[:100]
 
-            data = post_park_transactions_list(
-                park_id,
-                api_key,
-                client_id,
-                order.order_id
-            )
+        # Словарь заказов по order_id
+        orders_dict = {order['order_id']: order for order in active_orders}
 
-            if not data:
-                return
+        # Фильтруем только используемые заказы
+        orders_ids = list(orders_dict.keys())
 
-            transactions_entries = data.get('transactions', [])
+        if not orders_ids:
+            continue
 
-            if not transactions_entries:
-                continue
+        # Запрашиваем транзакции по фильтрованному списку заказов
+        data = post_park_transactions_list(
+            park_id,
+            api_key,
+            client_id,
+            orders_ids
+        )
 
-            # Получаем все уникальные driver_id
-            driver_ids = list({transactions['driver_profile_id'] for transactions in transactions_entries})
+        if not data:
+            continue
 
-            # Загружаем всех водителей одним запросом
-            drivers_map = {d.driver_id: d for d in Driver.objects.filter(driver_id__in=driver_ids)}
+        transactions_entries = data.get('transactions', [])
 
-            for transaction_data in transactions_entries:
-                driver = drivers_map.get(transaction_data['driver_profile_id'])
-                if not driver:
-                    continue
+        if not transactions_entries:
+            # Ставим метку для выбранных заказов
+            Order.objects.filter(pk__in=[order['pk'] for order in orders_dict.values()]).update(
+                load_transaction_complete=True)
 
-                transactions_to_create.append(Transaction(
-                    park=park,
-                    driver=driver,
-                    order=order,
-                    transaction_id=transaction_data['id'],
-                    event_at=transaction_data['event_at'],
-                    category_id=transaction_data.get('category_id', ''),
-                    category_name=transaction_data.get('category_name', ''),
-                    group_id=transaction_data.get('group_id', ''),
-                    amount=transaction_data.get('amount', 0),
-                    description=transaction_data.get('description', '')
-                ))
+        # Обрабатываем каждую транзакцию
+        for transaction_data in transactions_entries:
+            order_id = transaction_data['order_id']
+            order = orders_dict.get(order_id)
 
-                order.load_transaction_complete = True
-                order.save()
+            if not order:
+                continue  # пропускаем транзакцию, если соответствующего заказа нет
 
+            # Формируем новую транзакцию
+            transactions_to_create.append(Transaction(
+                park=park,
+                driver_id=order['driver_id'],  # Идентификатор водителя
+                order_id=order['pk'],  # Идентификатор заказа
+                transaction_id=transaction_data['id'],
+                event_at=transaction_data['event_at'],
+                category_id=transaction_data.get('category_id', ''),
+                category_name=transaction_data.get('category_name', ''),
+                group_id=transaction_data.get('group_id', ''),
+                amount=float(transaction_data.get('amount', 0)),
+                description=transaction_data.get('description', '')
+            ))
+
+        # Применяем массовые обновления
         if transactions_to_create:
             try:
                 Transaction.objects.bulk_create(
                     transactions_to_create,
                     batch_size=batch_size,
-                    ignore_conflicts=True,
-                    unique_fields=['park', 'transaction_id'],
-                    update_fields=['amount', 'group_id'],
+                    update_conflicts=True,
+                    unique_fields=['transaction_id'],
+                    update_fields=['amount', 'group_id']
                 )
+
+                # Ставим метку для выбранных заказов
+                Order.objects.filter(pk__in=[order['pk'] for order in orders_dict.values()]).update(
+                    load_transaction_complete=True)
+
             except Exception as e:
                 logger.error("Ошибка в добавлении транзакций: %s", e)
 
-    return Response({'massage': 'транзакции загружены'}, status=status.HTTP_200_OK)
+    return Response({'message': 'транзакции загружены'}, status=status.HTTP_200_OK)
 
 
 def process_dates_with_resume():

@@ -176,8 +176,8 @@ def get_profiles_list(park_id, api_key, client_id):
     }
 
 
-def post_orders_list(park_id, api_key, client_id, ended_at_from, ended_at_to, sleep_timer=0):
-    """Получение списка заказов"""
+def post_orders_list(park_id, api_key, client_id, ended_at_from, ended_at_to):
+    """Получение списка заказов с экспоненциальной задержкой при ошибке 429"""
     URL = URL_API_YANDEX + URL_API_POST_ORDERS_LIST
 
     # заголовки
@@ -214,41 +214,66 @@ def post_orders_list(park_id, api_key, client_id, ended_at_from, ended_at_to, sl
                     'ended_at': {
                         'from': ended_at_from_iso,
                         'to': ended_at_to_iso,
-                    }
+                    },
                 }
             }
         }
     }
 
     json_total = []
-    response = requests.request('POST', URL, headers=headers, json=data)
-    if response.status_code == 200:
-        json_total = response.json()['orders']
-        try:
-            while response.json().get('cursor'):
-                time.sleep(sleep_timer)
 
-                cursor = {
-                    'cursor': response.json().get('cursor')
-                }
-                data.update(cursor)
-                response = requests.request('POST', URL, headers=headers, json=data)
+    def make_request():
+        nonlocal data, headers
+        delay = 30  # начальная задержка 30 секунд
+        max_attempts = 10  # максимальное количество попыток
+        attempt = 0
+
+        while attempt < max_attempts:
+            response = requests.request('POST', URL, headers=headers, json=data)
+
+            if response.status_code == 200:
+                return response
+            elif response.status_code == 429:
+                attempt += 1
+                logger.error(f'Ошибка 429. Попытка {attempt}. Ждем {delay} секунд. {park_id}')
+                time.sleep(delay)
+                delay *= 2  # удваиваем задержку
+            else:
+                logger.error(f'Ошибка загрузки заказов: {response.status_code} {response.text} {park_id}')
+                return response
+
+        logger.error(f'Превышено максимальное количество попыток ({max_attempts}) для парка {park_id}')
+        return None
+
+    # Первый запрос
+    response = make_request()
+    if response and response.status_code == 200:
+        json_total = response.json().get('orders', [])
+
+        # Обработка курсора
+        while response.json().get('cursor'):
+
+            cursor = {'cursor': response.json().get('cursor')}
+            data.update(cursor)
+
+            response = make_request()
+            if response and response.status_code == 200:
                 try:
-                    response.json()
-                    json_total += response.json().get('orders')
+                    json_total.extend(response.json().get('orders', []))
                 except ValueError as e:
                     print("Ошибка декодирования JSON:", e)
                     print("Текст ответа:", response.text)
-                    logger.error(f'Ошибка декодирования JSON:, {e} {response.text}')
-        except Exception as e:
-            logger.error(f'ошибка загрузки заказов {response.text} {e} {park_id}')
+                    logger.error(f'Ошибка декодирования JSON: {e} {response.text}')
+            else:
+                break
+
     return {
         'orders': json_total
     }
 
 
-def post_park_transactions_list(park_id, api_key, client_id, order_id):
-    """Получение списка транзакций по водителю (курьеру)"""
+def post_park_transactions_list(park_id, api_key, client_id, orders_ids):
+    """Получение списка транзакций по заказу с экспоненциальной задержкой при ошибке 429"""
     URL = URL_API_YANDEX + URL_API_POST_PARK_ORDERS_TRANSACTIONS_LIST
 
     # заголовки
@@ -263,28 +288,68 @@ def post_park_transactions_list(park_id, api_key, client_id, order_id):
             'park': {
                 'id': park_id,
                 'order': {
-                    'ids': [
-                        order_id
-                    ]
+                    'ids': orders_ids
                 }
             }
         }
     }
 
-    json_total = None
-    response = requests.request('POST', URL, headers=headers, json=data)
-    if response.status_code == 200:
-        json_total = response.json()['transactions']
-        # перебираем все порции заказов
-        while response.json().get('cursor'):
-            cursor = {
-                'cursor': response.json().get('cursor')
-            }
-            data.update(cursor)
+    def make_request():
+        nonlocal data, headers
+        delay = 30  # начальная задержка 30 секунд
+        max_attempts = 10  # максимальное количество попыток
+        attempt = 0
+
+        while attempt < max_attempts:
             response = requests.request('POST', URL, headers=headers, json=data)
-            response.json()
-            json_total += response.json()['transactions']
-    return {'transactions': json_total}
+            # print(response.text)
+
+            if response.status_code == 200:
+                return response
+            elif response.status_code == 429:
+                attempt += 1
+                logger.error(
+                    f'Ошибка 429 при запросе транзакций. Попытка {attempt}. Ждем {delay} сек. Park: {park_id}')
+                time.sleep(delay)
+                delay *= 2  # удваиваем задержку
+            else:
+                logger.error(
+                    f'Ошибка загрузки транзакций: {response.status_code} {response.text} Park: {park_id}')
+                return response
+
+        logger.error(
+            f'Превышено максимальное количество попыток ({max_attempts}) для транзакций заказа парк {park_id}')
+        return None
+
+    json_total = []
+    response = make_request()
+
+    if response and response.status_code == 200:
+        try:
+            json_total = response.json().get('transactions', [])
+
+            # Обработка курсора
+            while response.json().get('cursor'):
+
+                cursor = {'cursor': response.json().get('cursor')}
+                data.update(cursor)
+
+                response = make_request()
+                if response and response.status_code == 200:
+                    try:
+                        json_total.extend(response.json().get('transactions', []))
+                    except ValueError as e:
+                        print(f"Ошибка декодирования JSON для транзакций: {e}")
+                        print("Текст ответа:", response.text)
+                        logger.error(f'Ошибка декодирования JSON для транзакций: {e} {response.text} Order: {order_id}')
+                else:
+                    break
+        except Exception as e:
+            logger.error(f'Неожиданная ошибка при обработке транзакций: {e} Park: {park_id}')
+
+    return {
+        'transactions': json_total if json_total is not None else []
+    }
 
 
 def get_transaction_categories(park_id, api_key, client_id):

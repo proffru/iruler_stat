@@ -38,12 +38,12 @@ beat_schedule = {
     },
     'Загрузка транзакций': {
         'task': 'park.tasks.load_transactions_celery',
-        'schedule': crontab(minute='*/30')
+        'schedule': crontab(minute='*/2')
     },
-    'Старые заказы': {
-        'task': 'park.tasks.load_old_orders_celery',
-        'schedule': crontab(minute=00, hour=00)
-    },
+    # 'Старые заказы': {
+    #     'task': 'park.tasks.load_old_orders_celery',
+    #     'schedule': crontab(minute=00, hour=00)
+    # },
 }
 
 app.conf.beat_schedule = beat_schedule

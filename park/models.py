@@ -186,7 +186,10 @@ class Order(models.Model):
         on_delete=models.CASCADE,
         verbose_name='водитель',
         related_name='order_driver',
-        db_index=True
+        db_index=True,
+        blank=True,
+        null=True,
+        default=None
     )
     order_id = models.CharField(max_length=255, verbose_name='id заказа', unique=True, db_index=True)
     short_id = models.CharField(max_length=255, verbose_name='короткий id заказа')
@@ -254,7 +257,7 @@ class Transaction(models.Model):
     category_name = models.CharField(max_length=255, verbose_name='название категории', blank=True, default='')
     group_id = models.CharField(max_length=255, verbose_name='группа', blank=True, default='')
     amount = models.DecimalField(decimal_places=4, max_digits=15, verbose_name='стоимость')
-    description = models.CharField(max_length=255, verbose_name='описание')
+    description = models.CharField(max_length=5000, verbose_name='описание')
 
     class Meta:
         indexes = [

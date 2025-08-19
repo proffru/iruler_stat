@@ -65,7 +65,7 @@ class DriverAdmin(admin.ModelAdmin):
 class OrderAdmin(admin.ModelAdmin):
     save_on_top = True
     list_display = ('order_id', 'driver', 'status', 'created_at', 'price')
-    list_filter = ('created_at', 'load_transaction_complete', 'status', 'payment_method')
+    list_filter = ('created_at', 'load_transaction_complete', 'status', 'payment_method', 'park')
     search_fields = ('order_id', 'driver__last_name', 'driver__first_name')
     raw_id_fields = ('park', 'driver', 'car')
     date_hierarchy = 'created_at'
