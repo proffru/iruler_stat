@@ -192,7 +192,7 @@ def load_order(ended_at_from=None, ended_at_to=None):
     """Загрузка заказов"""
     batch_size = 100  # Задайте желаемый размер пакета
 
-    qs = Park.objects.filter(is_active=True)[9:10]
+    qs = Park.objects.filter(is_active=True)
 
     for park in qs:
         client_id = park.client_id
@@ -490,8 +490,8 @@ def process_dates_with_resume():
     """
     Обрабатывает даты с возможностью продолжения с последней успешной даты
     """
-    start_date = datetime.strptime('2025-04-01', '%Y-%m-%d').date()
-    end_date = datetime.strptime('2025-08-20', '%Y-%m-%d').date()
+    start_date = datetime.strptime('2025-07-25', '%Y-%m-%d').date()
+    end_date = datetime.strptime('2025-08-30', '%Y-%m-%d').date()
 
     # Получаем или создаем запись
     processing_record, created = DateProcessing.objects.get_or_create(
